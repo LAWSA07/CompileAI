@@ -1,0 +1,10 @@
+FC: cannot open D:\COMPILER2\TEST\TEST_MACRO_EXPECTEDEDGE_CASES.C - No such file or folder
+
+FC: cannot open D:\COMPILER2\TEST\TEST_MACRO_EXPECTEDFUNCTION_LIKE.C - No such file or folder
+
+FC: cannot open D:\COMPILER2\TEST\TEST_MACRO_EXPECTEDMALFORMED.C - No such file or folder
+
+FC: cannot open D:\COMPILER2\TEST\TEST_MACRO_EXPECTEDNESTED.C - No such file or folder
+
+FC: cannot open D:\COMPILER2\TEST\TEST_MACRO_EXPECTEDOBJECT_LIKE.C - No such file or folder
+

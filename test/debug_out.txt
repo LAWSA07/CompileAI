@@ -1,0 +1,16 @@
+FC: cannot open D:\COMPILER2\TEST\TEST_MACRO_EXPECTEDEDGE_CASES.C - No such file or folder
+
+[FAIL] test_macro_edge_cases does not match expected output
+FC: cannot open D:\COMPILER2\TEST\TEST_MACRO_EXPECTEDFUNCTION_LIKE.C - No such file or folder
+
+[FAIL] test_macro_function_like does not match expected output
+FC: cannot open D:\COMPILER2\TEST\TEST_MACRO_EXPECTEDMALFORMED.C - No such file or folder
+
+[FAIL] test_macro_malformed does not match expected output
+FC: cannot open D:\COMPILER2\TEST\TEST_MACRO_EXPECTEDNESTED.C - No such file or folder
+
+[FAIL] test_macro_nested does not match expected output
+FC: cannot open D:\COMPILER2\TEST\TEST_MACRO_EXPECTEDOBJECT_LIKE.C - No such file or folder
+
+[FAIL] test_macro_object_like does not match expected output
+Some macro preprocessor tests failed.

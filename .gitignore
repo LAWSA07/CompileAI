@@ -1,0 +1,98 @@
+# Compiled object files and binaries
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.out
+*.a
+*.lib
+*.pdb
+*.ilk
+*.exp
+*.app
+
+# Build directories
+/build/
+/dist/
+/bin/
+
+# Test outputs
+/test_output/
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# Python cache and virtualenv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+ENV/
+
+# Electron node_modules and cache
+node_modules/
+electron-app/node_modules/
+electron-app/dist/
+electron-app/.cache/
+electron-app/.webpack/
+
+# Mac and Linux system files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# LAWSA IDE/compile artifacts
+lawsa_test.exe
+preprocess.exe
+lawsa.exe
+*.s
+*.asm
+
+# Large files (GitHub LFS recommended)
+*.zip
+*.tar.gz
+*.7z
+*.rar
+*.iso
+*.img
+
+# Ignore test binaries and intermediate files
+/test/*.exe
+/test/*.o
+/test/*.out
+/test/*.log
+/test/*.tmp
+
+# Ignore user-specific files
+*.user
+*.local
+*.history
+
+# Ignore backup files
+*~
+
+# Ignore all other files
+*~
+*.o
+tmp*
+a.out
+chibicc
+
+# Files containing API keys
+electron-app/src/services/llmService.js
+electron-app/index.js
+
+# Test files for API services
+test-*.js 

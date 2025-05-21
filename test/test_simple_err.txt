@@ -1,0 +1,22 @@
+Found keyword: int
+Found identifier: main
+Found single-letter operator: (
+Found single-letter operator: )
+Found single-letter operator: {
+Found keyword: return
+Found number: 42
+Found single-letter operator: ;
+Found single-letter operator: }
+Done tokenizing
+First token: int (kind=5)
+Parsing program...
+Parsing function...
+Function name: main
+Parsing function body...
+Parsing return statement
+Function body parsing complete
+Function parsed successfully, stack size: 0
+Program parsing complete
+Generating assembly code...
+Generating code for function main
+Assembly generation complete
