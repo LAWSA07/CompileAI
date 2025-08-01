@@ -94,6 +94,21 @@ class MemoryService {
         }
     }
 
+    addToHistory(action, details) {
+        if (!this.isInitialized) {
+            console.warn('Memory service not initialized, skipping history addition');
+            return { success: false, error: 'Memory service not initialized' };
+        }
+        
+        try {
+            this.memoryStore.addToHistory(action, details);
+            return { success: true };
+        } catch (error) {
+            console.error('Error adding to history:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
     getMemoryStats() {
         if (!this.isInitialized) {
             return { initialized: false };

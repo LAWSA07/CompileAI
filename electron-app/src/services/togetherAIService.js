@@ -11,7 +11,7 @@
  */
 
 const axios = require('axios');
-const localRefactor = require('./localRefactorService');
+const { refactorCCode: localRefactorCCode } = require('./localRefactorService');
 
 // Together AI API endpoint for chat completions
 const TOGETHER_API_ENDPOINT = 'https://api.together.xyz/v1/chat/completions';
@@ -35,7 +35,7 @@ async function refactorCCode(code) {
   // Skip API call if API key is not configured
   if (!TOGETHER_API_KEY || TOGETHER_API_KEY === 'YOUR_TOGETHER_API_KEY') {
     console.log('Together AI API key not configured, using local refactoring.');
-    return await localRefactor.refactorCCode(code);
+    return await localRefactorCCode(code);
   }
   
   try {
@@ -47,7 +47,7 @@ async function refactorCCode(code) {
     console.log('Falling back to local refactoring implementation...');
     
     // Fallback to local implementation if Together AI fails
-    return await localRefactor.refactorCCode(code);
+    return await localRefactorCCode(code);
   }
 }
 

@@ -1,19 +1,14 @@
-// Renderer process for LAWSA Cursor IDE
+// Access to Electron IPC - will be available after preload
+// let electronAPI; // Commented out to avoid redeclaration - will be available from preload
 
-// Access to Electron IPC
-const { ipcRenderer } = window.electronAPI;
-
-// Import services
-const MemoryService = require('./src/services/memoryService');
-const LLMService = require('./src/services/llmService');
-const AICompletionService = require('./src/services/aiCompletionService');
-const CodeGenerationService = require('./src/services/codeGenerationService');
+// Services will be handled by the main process
+let memoryService, llmService, aiCompletionService, codeGenerationService;
 
 // Default C code
 const defaultCode = `#include <stdio.h>
 
 int main() {
-    printf("Hello, LAWSA!\\n");
+    printf("Hello, LAWSA!\n");
     return 0;
 }`;
 
@@ -21,13 +16,6 @@ int main() {
 let editor = null;
 let originalCode = defaultCode;
 let currentFilePath = null;
-let diffEditor = null;
-
-// Services
-let memoryService = null;
-let llmService = null;
-let aiCompletionService = null;
-let codeGenerationService = null;
 
 // Project state
 let projectFiles = new Map();
@@ -48,127 +36,411 @@ const cursorPosition = document.getElementById('cursor-position');
 const loadingIndicator = document.getElementById('loading-indicator');
 const toastNotification = document.getElementById('toast-notification');
 
-// Initialize services
+// Initialize services with proper error handling
 async function initializeServices() {
   try {
     showLoading('Initializing AI services...');
     
-    // Initialize memory service
-    memoryService = new MemoryService();
-    const memoryResult = memoryService.initialize(process.cwd());
+    // Initialize project files map first
+    if (typeof projectFiles === 'undefined') {
+      window.projectFiles = new Map();
+    }
     
-    if (!memoryResult) {
-      console.error('Memory service initialization failed');
-      showToast('Memory service failed to initialize', 'error');
+    // Check service availability from preload
+    const serviceStatus = window.serviceStatus || {};
+    console.log('Service availability:', serviceStatus);
+    
+    // Try to create services directly if classes are available
+    let services = {};
+    
+    if (typeof window.LLMService === 'function') {
+      try {
+        services.llmService = new window.LLMService();
+        console.log('✅ LLM service created from window');
+      } catch (error) {
+        console.error('Failed to create LLM service:', error);
+      }
+    }
+    
+    if (typeof window.MemoryService === 'function') {
+      try {
+        services.memoryService = new window.MemoryService();
+        console.log('✅ Memory service created from window');
+      } catch (error) {
+        console.error('Failed to create Memory service:', error);
+      }
+    }
+    
+    if (typeof window.CodeGenerationService === 'function' && services.llmService) {
+      try {
+        services.codeGenerationService = new window.CodeGenerationService(services.llmService, services.memoryService);
+        console.log('✅ Code generation service created from window');
+      } catch (error) {
+        console.error('Failed to create Code generation service:', error);
+      }
+    }
+    
+    // Use the new service creation approach as fallback
+    if (Object.keys(services).length === 0 && window.createServices) {
+      services = window.createServices();
+    }
+    
+    // Check if we have any services available
+    if (Object.keys(services).length === 0) {
+      console.warn('No services available, using fallback mode');
+      initializeFallbackMode();
+      hideLoading();
+      return;
+    }
+    
+    // Initialize memory service
+    if (services.memoryService) {
+      console.log('Initializing MemoryService...');
+      try {
+        memoryService = services.memoryService;
+        const memoryResult = memoryService.initialize('.');
+        
+        if (!memoryResult) {
+          console.warn('Memory service initialization failed, continuing without memory');
+          memoryService = null;
+        } else {
+          console.log('Memory service initialized successfully');
+        }
+      } catch (error) {
+        console.error('Memory service initialization error:', error);
+        memoryService = null;
+      }
     }
     
     // Initialize LLM service
-    const apiKey = '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';
-    llmService = new LLMService(apiKey);
-    const llmResult = await llmService.initialize();
-    
-    if (!llmResult.success) {
-      console.error('LLM service initialization failed:', llmResult.error);
-      showToast('LLM service failed to initialize', 'error');
+    if (services.llmService) {
+      console.log('Initializing LLMService...');
+      try {
+        llmService = services.llmService;
+        const llmResult = await llmService.initialize();
+        
+        if (!llmResult.success) {
+          console.warn('LLM service initialization failed:', llmResult.error);
+          llmService = null;
+        } else {
+          console.log('LLM service initialized successfully');
+        }
+      } catch (error) {
+        console.error('LLM service initialization error:', error);
+        llmService = null;
+      }
     }
     
     // Initialize AI completion service
-    if (memoryService && llmService) {
-      aiCompletionService = new AICompletionService(llmService);
-      codeGenerationService = new CodeGenerationService(llmService, memoryService);
-      showToast('AI services initialized successfully', 'success');
+    if (services.aiCompletionService && llmService) {
+      console.log('Initializing AICompletionService...');
+      try {
+        aiCompletionService = services.aiCompletionService;
+        console.log('AI completion service initialized successfully');
+      } catch (error) {
+        console.error('Failed to initialize AI completion service:', error);
+        aiCompletionService = null;
+      }
+    }
+    
+    // Initialize code generation service
+    if (services.codeGenerationService) {
+      console.log('Initializing CodeGenerationService...');
+      try {
+        codeGenerationService = services.codeGenerationService;
+        console.log('Code generation service initialized successfully');
+      } catch (error) {
+        console.error('Failed to initialize code generation service:', error);
+        codeGenerationService = null;
+      }
+    }
+    
+    // Update status based on what's available
+    const servicesStatus = getServicesStatus();
+    updateAIStatus(servicesStatus);
+    
+    if (servicesStatus.allAvailable) {
+      showToast('🎉 All AI services initialized successfully', 'success');
+    } else if (servicesStatus.someAvailable) {
+      showToast('⚠️ Some AI services initialized', 'warning');
+    } else {
+      showToast('⚠️ AI services unavailable - using basic mode', 'warning');
     }
     
     hideLoading();
   } catch (error) {
     console.error('Service initialization error:', error);
     hideLoading();
-    showToast('Service initialization failed', 'error');
+    showToast('❌ Service initialization failed - using basic mode', 'error');
+    initializeFallbackMode();
   }
 }
 
-// Initialize Monaco Editor
-require.config({ paths: { vs: './node_modules/monaco-editor/min/vs' } });
-
-require(['vs/editor/editor.main'], function() {
-  // Set up editor with C language
-  monaco.languages.register({ id: 'c' });
+// Initialize fallback mode when services aren't available
+function initializeFallbackMode() {
+  console.log('Initializing fallback mode...');
   
-  // Create the editor
-  editor = monaco.editor.create(document.getElementById('monaco-editor'), {
-    value: defaultCode,
-    language: 'c',
-    theme: 'vs-dark',
-    automaticLayout: true,
-    fontSize: 14,
-    minimap: {
-      enabled: true
-    },
-    scrollBeyondLastLine: false,
-    renderLineHighlight: 'all',
-    lineNumbers: 'on',
-    rulers: [],
-    wordWrap: 'off',
-    suggestOnTriggerCharacters: true,
-    quickSuggestions: {
-      other: true,
-      comments: false,
-      strings: false
-    }
-  });
-  
-  // Set up resizable panels
-  Split(['.editor-container', '.panel-container'], {
-    sizes: [75, 25],
-    minSize: [200, 100],
-    direction: 'vertical',
-    gutterSize: 5,
-    onDragEnd: function() {
-      editor.layout();
-    }
-  });
-  
-  // Track cursor position
-  editor.onDidChangeCursorPosition(e => {
-    const position = e.position;
-    cursorPosition.textContent = `Line: ${position.lineNumber}, Column: ${position.column}`;
-    
-    // Update context in memory
-    if (memoryService) {
-      memoryService.updateContext({
-        cursorPosition: { line: position.lineNumber, column: position.column }
-      });
-    }
-  });
-  
-  // Track content changes
-  editor.onDidChangeModelContent(e => {
-    const content = editor.getValue();
-    
-    // Update file in memory
-    if (memoryService && currentFilePath) {
-      memoryService.updateFile(currentFilePath, content);
-    }
-    
-    // Update context
-    if (memoryService) {
-      memoryService.updateContext({
-        selectedCode: getSelectedText()
-      });
-    }
-  });
-  
-  // Register AI completion provider
-  if (aiCompletionService) {
-    aiCompletionService.registerCompletionProvider(monaco, editor);
+  // Initialize basic project files map
+  if (typeof projectFiles === 'undefined') {
+    window.projectFiles = new Map();
   }
   
-  // Mark the editor as initialized
-  statusMessage.textContent = 'Editor Ready';
+  // Set all services to null
+  memoryService = null;
+  llmService = null;
+  aiCompletionService = null;
+  codeGenerationService = null;
   
-  // Initialize services after editor is ready
-  initializeServices();
-});
+  // Check if Qwen AI is available
+  const qwenAvailable = window.qwenAI && window.qwenAI.isAvailable;
+  
+  // Update UI to reflect basic mode or Qwen availability
+  updateAIStatus({
+    allAvailable: false,
+    someAvailable: qwenAvailable,
+    basicMode: !qwenAvailable,
+    qwenAvailable: qwenAvailable
+  });
+  
+  console.log('Fallback mode initialized');
+}
+
+// Get status of all services
+function getServicesStatus() {
+  const memory = memoryService && memoryService.isReady();
+  const llm = llmService && llmService.isInitialized;
+  const completion = aiCompletionService !== null;
+  const generation = codeGenerationService !== null;
+  
+  return {
+    memory,
+    llm,
+    completion,
+    generation,
+    allAvailable: memory && llm && completion && generation,
+    someAvailable: memory || llm || completion || generation,
+    basicMode: !memory && !llm && !completion && !generation
+  };
+}
+
+// Update AI status in the UI
+function updateAIStatus(status) {
+  const aiStatusElement = document.getElementById('ai-status');
+  if (aiStatusElement) {
+    if (status.allAvailable) {
+      aiStatusElement.textContent = '🤖 AI Ready';
+      aiStatusElement.style.color = '#4caf50';
+    } else if (status.qwenAvailable) {
+      aiStatusElement.textContent = '🤖 Qwen AI';
+      aiStatusElement.style.color = '#4caf50';
+    } else if (status.someAvailable) {
+      aiStatusElement.textContent = '🤖 AI Partial';
+      aiStatusElement.style.color = '#ff9800';
+    } else {
+      aiStatusElement.textContent = '🤖 AI Unavailable';
+      aiStatusElement.style.color = '#f44336';
+    }
+  }
+}
+
+// Initialize Monaco Editor with proper CDN loading
+function initializeMonacoFromCDN() {
+  if (typeof require !== 'undefined' && require.config) {
+    // Use AMD loader if available
+    require.config({
+      paths: {
+        vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs'
+      }
+    });
+    require(['vs/editor/editor.main'], async function() {
+      console.log('Monaco Editor loaded via AMD');
+      await initializeMonacoEditor();
+    });
+  } else if (typeof monaco !== 'undefined') {
+    // Monaco already loaded globally
+    console.log('Monaco Editor available globally');
+    initializeMonacoEditor();
+  } else {
+    // Wait for Monaco to load from CDN
+    console.log('Waiting for Monaco Editor to load from CDN...');
+    const checkMonaco = setInterval(() => {
+      if (typeof monaco !== 'undefined') {
+        clearInterval(checkMonaco);
+        console.log('Monaco Editor loaded from CDN');
+        initializeMonacoEditor();
+      }
+    }, 100);
+    
+    // Timeout after 10 seconds
+    setTimeout(() => {
+      clearInterval(checkMonaco);
+      if (typeof monaco === 'undefined') {
+        console.error('Monaco Editor failed to load from CDN');
+        showToast('Monaco Editor failed to load', 'error');
+        // Initialize basic functionality without Monaco
+        initializeBasicEditor();
+      }
+    }, 10000);
+  }
+}
+
+// Initialize Monaco Editor when page loads
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeMonacoFromCDN);
+} else {
+  initializeMonacoFromCDN();
+}
+
+async function initializeMonacoEditor() {
+  try {
+    // Set up editor with C language
+    monaco.languages.register({ id: 'c' });
+    
+    // Create the editor
+    editor = monaco.editor.create(document.getElementById('monaco-editor'), {
+      value: defaultCode,
+      language: 'c',
+      theme: 'vs-dark',
+      automaticLayout: true,
+      fontSize: 14,
+      minimap: {
+        enabled: true
+      },
+      scrollBeyondLastLine: false,
+      renderLineHighlight: 'all',
+      lineNumbers: 'on',
+      rulers: [],
+      wordWrap: 'off',
+      suggestOnTriggerCharacters: true,
+      quickSuggestions: {
+        other: true,
+        comments: false,
+        strings: false
+      }
+    });
+    
+    // Set up resizable panels
+    if (typeof Split !== 'undefined') {
+      Split(['.editor-container', '.panel-container'], {
+        sizes: [75, 25],
+        minSize: [200, 100],
+        direction: 'vertical',
+        gutterSize: 5,
+        onDragEnd: function() {
+          editor.layout();
+        }
+      });
+    }
+    
+    // Track cursor position
+    editor.onDidChangeCursorPosition(e => {
+      const position = e.position;
+      cursorPosition.textContent = `Line: ${position.lineNumber}, Column: ${position.column}`;
+      
+      // Update context in memory
+      if (memoryService && memoryService.isReady()) {
+        try {
+          memoryService.updateContext({
+            cursorPosition: { line: position.lineNumber, column: position.column }
+          });
+        } catch (error) {
+          console.warn('Failed to update cursor position in memory:', error);
+        }
+      }
+    });
+    
+    // Track content changes
+    editor.onDidChangeModelContent(e => {
+      const content = editor.getValue();
+      
+      // Update file in memory
+      if (memoryService && memoryService.isReady() && currentFilePath) {
+        try {
+          memoryService.updateFile(currentFilePath, content);
+        } catch (error) {
+          console.warn('Failed to update file in memory:', error);
+        }
+      }
+      
+      // Update context
+      if (memoryService && memoryService.isReady()) {
+        try {
+          memoryService.updateContext({
+            selectedCode: getSelectedText()
+          });
+        } catch (error) {
+          console.warn('Failed to update context in memory:', error);
+        }
+      }
+    });
+    
+    // Mark the editor as initialized
+    statusMessage.textContent = '🟢 Editor Ready';
+    console.log('Monaco Editor initialized successfully');
+    
+    // Initialize services after editor is ready
+    await initializeServices();
+    
+    // Setup generate button after services are initialized
+    setupGenerateButton();
+    
+    // Register AI completion provider after services are ready
+    if (aiCompletionService) {
+      try {
+        aiCompletionService.registerCompletionProvider(monaco, editor);
+        console.log('AI completion provider registered');
+      } catch (error) {
+        console.warn('Failed to register AI completion provider:', error);
+      }
+    }
+    
+  } catch (error) {
+    console.error('Error initializing Monaco Editor:', error);
+    showToast('Monaco Editor initialization failed', 'error');
+    // Fall back to basic editor
+    initializeBasicEditor();
+  }
+}
+
+// Fallback basic editor without Monaco
+function initializeBasicEditor() {
+  const editorContainer = document.getElementById('monaco-editor');
+  editorContainer.innerHTML = `
+    <textarea id="basic-editor" style="
+      width: 100%;
+      height: 100%;
+      background-color: #1e1e1e;
+      color: #e0e0e0;
+      border: none;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 14px;
+      padding: 10px;
+      resize: none;
+      outline: none;
+    ">${defaultCode}</textarea>
+  `;
+  
+  const basicEditor = document.getElementById('basic-editor');
+  
+  // Create a simple editor interface
+  editor = {
+    getValue: () => basicEditor.value,
+    setValue: (value) => { basicEditor.value = value; },
+    getSelection: () => ({ isEmpty: () => true }),
+    getValueInRange: () => '',
+    layout: () => {},
+    onDidChangeCursorPosition: () => {},
+    onDidChangeModelContent: () => {}
+  };
+  
+  statusMessage.textContent = '🟡 Basic Editor (Monaco unavailable)';
+  console.log('Basic editor initialized as fallback');
+  
+  // Initialize services
+  initializeServices().then(() => {
+    setupGenerateButton();
+  });
+}
 
 // Tab switching in panels
 document.querySelectorAll('.panel-tab').forEach(tab => {
@@ -192,45 +464,63 @@ compileBtn.addEventListener('click', async () => {
   
   try {
     // Update memory with current code
-    if (memoryService && currentFilePath) {
-      memoryService.updateFile(currentFilePath, code);
+    if (memoryService && memoryService.isReady() && currentFilePath) {
+      try {
+        memoryService.updateFile(currentFilePath, code);
+      } catch (error) {
+        console.warn('Failed to update file in memory:', error);
+      }
     }
     
     // Compile using the LAWSA compiler
-    const result = await ipcRenderer.invoke('compile-code', code);
+    const result = await window.electronAPI.invoke('compile-code', code);
     
     if (result.success) {
-      updateConsole(result.output);
-      updateAssembly(result.assembly);
-      showToast('Compilation successful', 'success');
+      updateConsole(result.stdout || result.output || 'Compilation successful');
+      if (result.assembly) {
+        updateAssembly(result.assembly);
+      }
+      showToast('✅ Compilation successful', 'success');
       
       // Add to memory history
-      if (memoryService) {
-        memoryService.addToHistory('compilation', {
-          success: true,
-          output: result.output
-        });
+      if (memoryService && memoryService.isReady()) {
+        try {
+          memoryService.addToHistory('compilation', {
+            success: true,
+            output: result.stdout || result.output
+          });
+        } catch (error) {
+          console.warn('Failed to add compilation to history:', error);
+        }
       }
     } else {
-      updateConsole(result.error);
-      showToast('Compilation failed', 'error');
+      const errorMsg = result.error || result.stderr || 'Compilation failed';
+      updateConsole(errorMsg);
+      showToast('❌ Compilation failed', 'error');
       
-      // Try AI error diagnosis
-      if (llmService && memoryService) {
-        const context = memoryService.getAIContext();
-        const diagnosis = await llmService.diagnoseError(result.error, code, context);
-        
-        if (diagnosis.success) {
-          updateConsole(`AI Diagnosis: ${diagnosis.diagnosis}`);
-          if (diagnosis.suggestedFix) {
-            updateConsole(`Suggested Fix:\n${diagnosis.suggestedFix}`);
+      // Try AI error diagnosis if available
+      if (llmService && llmService.isInitialized) {
+        try {
+          const context = memoryService && memoryService.isReady() ?
+            memoryService.getAIContext() : '';
+          const diagnosis = await llmService.diagnoseError(errorMsg, code, context);
+          
+          if (diagnosis.success) {
+            updateConsole(`\n🤖 AI Diagnosis: ${diagnosis.diagnosis}`);
+            if (diagnosis.suggestedFix) {
+              updateConsole(`\n💡 Suggested Fix:\n${diagnosis.suggestedFix}`);
+            }
           }
+        } catch (error) {
+          console.warn('AI error diagnosis failed:', error);
         }
       }
     }
   } catch (error) {
-    updateConsole(`Error: ${error.message}`);
-    showToast('Compilation error', 'error');
+    const errorMsg = `Compilation error: ${error.message}`;
+    updateConsole(errorMsg);
+    showToast('❌ Compilation error', 'error');
+    console.error('Compile button error:', error);
   } finally {
     hideLoading();
   }
@@ -242,18 +532,34 @@ runBtn.addEventListener('click', async () => {
   showLoading('Running...');
   
   try {
-    const result = await ipcRenderer.invoke('run-code', code);
+    const result = await window.electronAPI.invoke('run-code', code);
     
     if (result.success) {
-      updateConsole(`Program output:\n${result.output}`);
-      showToast('Program executed successfully', 'success');
+      const output = result.output || result.stdout || 'Program executed successfully';
+      updateConsole(`🚀 Program output:\n${output}`);
+      showToast('✅ Program executed successfully', 'success');
+      
+      // Add to memory history
+      if (memoryService && memoryService.isReady()) {
+        try {
+          memoryService.addToHistory('execution', {
+            success: true,
+            output: output
+          });
+        } catch (error) {
+          console.warn('Failed to add execution to history:', error);
+        }
+      }
     } else {
-      updateConsole(`Runtime error: ${result.error}`);
-      showToast('Runtime error', 'error');
+      const errorMsg = result.error || result.stderr || 'Runtime error occurred';
+      updateConsole(`❌ Runtime error: ${errorMsg}`);
+      showToast('❌ Runtime error', 'error');
     }
   } catch (error) {
-    updateConsole(`Error: ${error.message}`);
-    showToast('Execution error', 'error');
+    const errorMsg = `Execution error: ${error.message}`;
+    updateConsole(errorMsg);
+    showToast('❌ Execution error', 'error');
+    console.error('Run button error:', error);
   } finally {
     hideLoading();
   }
@@ -266,56 +572,70 @@ refactorBtn.addEventListener('click', async () => {
   const textToRefactor = selectedText || code;
   
   if (!textToRefactor.trim()) {
-    showToast('No code to refactor', 'warning');
+    showToast('⚠️ No code to refactor', 'warning');
     return;
   }
   
-  showLoading('AI Refactoring...');
+  showLoading('🤖 AI Refactoring...');
   
   try {
     let refactoredCode;
     
-    if (llmService && memoryService) {
+    if (llmService && llmService.isInitialized) {
       // Use AI refactoring
-      const context = memoryService.getAIContext();
-      const result = await llmService.generateCodeRefactoring(textToRefactor, 'Improve code quality and readability');
-      
-      if (result.success) {
-        refactoredCode = result.refactoredCode;
+      try {
+        const context = memoryService && memoryService.isReady() ?
+          memoryService.getAIContext() : '';
+        const result = await llmService.generateCodeRefactoring(textToRefactor, 'Improve code quality and readability');
         
-        // Add AI interaction to memory
-        memoryService.addAIInteraction('refactoring', 
-          `Refactor this code: ${textToRefactor}`, 
-          result.explanation, 
-          { originalCode: textToRefactor, refactoredCode: refactoredCode }
-        );
-      } else {
-        throw new Error(result.error);
+        if (result.success) {
+          refactoredCode = result.refactoredCode;
+          
+          // Add AI interaction to memory
+          if (memoryService && memoryService.isReady()) {
+            try {
+              memoryService.addAIInteraction('refactoring',
+                `Refactor this code: ${textToRefactor}`,
+                result.explanation,
+                { originalCode: textToRefactor, refactoredCode: refactoredCode }
+              );
+            } catch (error) {
+              console.warn('Failed to add refactoring to memory:', error);
+            }
+          }
+        } else {
+          throw new Error(result.error);
+        }
+      } catch (error) {
+        console.warn('AI refactoring failed, using basic formatting:', error);
+        refactoredCode = textToRefactor.trim();
+        showToast('⚠️ Using basic formatting (AI refactoring failed)', 'warning');
       }
     } else {
-      // Fallback to local refactoring
-      const localRefactor = require('./src/services/localRefactorService');
-      refactoredCode = await localRefactor.refactorCCode(textToRefactor);
+      // Fallback to local refactoring - just format the code
+      refactoredCode = textToRefactor.trim();
+      showToast('⚠️ Using basic formatting (AI services unavailable)', 'warning');
     }
     
-    if (selectedText) {
-      // Replace selected text
+    if (selectedText && editor.executeEdits) {
+      // Replace selected text (Monaco Editor)
       const selection = editor.getSelection();
       editor.executeEdits('refactor', [{
         range: selection,
         text: refactoredCode
       }]);
     } else {
-      // Replace entire content
+      // Replace entire content or fallback for basic editor
       editor.setValue(refactoredCode);
     }
     
     showDiff(selectedText || code, refactoredCode);
-    showToast('Code refactored successfully', 'success');
+    showToast('✅ Code refactored successfully', 'success');
     
   } catch (error) {
-    updateConsole(`Refactoring error: ${error.message}`);
-    showToast('Refactoring failed', 'error');
+    updateConsole(`❌ Refactoring error: ${error.message}`);
+    showToast('❌ Refactoring failed', 'error');
+    console.error('Refactor button error:', error);
   } finally {
     hideLoading();
   }
@@ -324,25 +644,33 @@ refactorBtn.addEventListener('click', async () => {
 // Open button handler
 openBtn.addEventListener('click', async () => {
   try {
-    const result = await ipcRenderer.invoke('open-file');
+    const result = await window.electronAPI.invoke('open-file');
     
     if (result.success) {
       currentFilePath = result.filePath;
+      const fileName = result.fileName || result.filePath.split(/[/\\]/).pop();
       editor.setValue(result.content);
-      currentFileLabel.textContent = result.fileName;
+      currentFileLabel.textContent = fileName;
       
       // Update memory
-      if (memoryService) {
-        memoryService.updateFile(currentFilePath, result.content);
-        memoryService.updateContext({
-          currentFile: currentFilePath
-        });
+      if (memoryService && memoryService.isReady()) {
+        try {
+          memoryService.updateFile(currentFilePath, result.content);
+          memoryService.updateContext({
+            currentFile: currentFilePath
+          });
+        } catch (error) {
+          console.warn('Failed to update memory with opened file:', error);
+        }
       }
       
-      showToast('File opened successfully', 'success');
+      showToast('📂 File opened successfully', 'success');
+    } else {
+      showToast('❌ Failed to open file', 'error');
     }
   } catch (error) {
-    showToast('Failed to open file', 'error');
+    showToast('❌ Failed to open file', 'error');
+    console.error('Open file error:', error);
   }
 });
 
@@ -351,24 +679,32 @@ saveBtn.addEventListener('click', async () => {
   const content = editor.getValue();
   
   try {
-    const result = await ipcRenderer.invoke('save-file', {
+    const result = await window.electronAPI.invoke('save-file', {
       filePath: currentFilePath,
       content: content
     });
     
     if (result.success) {
       currentFilePath = result.filePath;
-      currentFileLabel.textContent = result.fileName;
+      const fileName = result.fileName || result.filePath.split(/[/\\]/).pop();
+      currentFileLabel.textContent = fileName;
       
       // Update memory
-      if (memoryService) {
-        memoryService.updateFile(currentFilePath, content);
+      if (memoryService && memoryService.isReady()) {
+        try {
+          memoryService.updateFile(currentFilePath, content);
+        } catch (error) {
+          console.warn('Failed to update memory with saved file:', error);
+        }
       }
       
-      showToast('File saved successfully', 'success');
+      showToast('💾 File saved successfully', 'success');
+    } else {
+      showToast('❌ Failed to save file', 'error');
     }
   } catch (error) {
-    showToast('Failed to save file', 'error');
+    showToast('❌ Failed to save file', 'error');
+    console.error('Save file error:', error);
   }
 });
 
@@ -397,26 +733,21 @@ function updateAssembly(assembly) {
 }
 
 function showDiff(original, modified) {
-  const diff = require('diff-match-patch');
-  const dmp = new diff();
-  const diffs = dmp.diff_main(original, modified);
-  dmp.diff_cleanupSemantic(diffs);
+  // Simple diff display without external library
+  const diffHtml = `
+    <div style="display: flex; height: 100%;">
+      <div style="flex: 1; padding: 8px; border-right: 1px solid #333;">
+        <h4 style="margin: 0 0 8px 0; color: #f44336;">Original</h4>
+        <pre style="margin: 0; white-space: pre-wrap; font-size: 12px;">${original}</pre>
+      </div>
+      <div style="flex: 1; padding: 8px;">
+        <h4 style="margin: 0 0 8px 0; color: #4caf50;">Refactored</h4>
+        <pre style="margin: 0; white-space: pre-wrap; font-size: 12px;">${modified}</pre>
+      </div>
+    </div>
+  `;
   
-  let diffHtml = '';
-  diffs.forEach(([type, text]) => {
-    switch (type) {
-      case 1: // Insert
-        diffHtml += `<span style="background-color: #4caf50; color: white;">${text}</span>`;
-        break;
-      case -1: // Delete
-        diffHtml += `<span style="background-color: #f44336; color: white;">${text}</span>`;
-        break;
-      default: // Equal
-        diffHtml += text;
-    }
-  });
-  
-  diffPanel.innerHTML = `<pre>${diffHtml}</pre>`;
+  diffPanel.innerHTML = diffHtml;
   
   // Switch to diff tab
   document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
@@ -466,6 +797,113 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// Fallback code generation function
+function generateBasicCode(prompt) {
+  const lowerPrompt = prompt.toLowerCase();
+  
+  let generatedCode = `#include <stdio.h>
+
+int main() {
+    printf("Hello, World!\\n");
+    return 0;
+}`;
+  
+  let explanation = 'Generated a basic Hello World C program.';
+  
+  if (lowerPrompt.includes('calculator')) {
+    generatedCode = `#include <stdio.h>
+
+int main() {
+    int a, b, result;
+    char operation;
+    
+    printf("Enter first number: ");
+    scanf("%d", &a);
+    
+    printf("Enter operation (+, -, *, /): ");
+    scanf(" %c", &operation);
+    
+    printf("Enter second number: ");
+    scanf("%d", &b);
+    
+    switch(operation) {
+        case '+':
+            result = a + b;
+            break;
+        case '-':
+            result = a - b;
+            break;
+        case '*':
+            result = a * b;
+            break;
+        case '/':
+            if(b != 0)
+                result = a / b;
+            else {
+                printf("Error: Division by zero!\\n");
+                return 1;
+            }
+            break;
+        default:
+            printf("Error: Invalid operation!\\n");
+            return 1;
+    }
+    
+    printf("Result: %d\\n", result);
+    return 0;
+}`;
+    explanation = 'Generated a basic calculator program with add, subtract, multiply, and divide operations.';
+  } else if (lowerPrompt.includes('loop') || lowerPrompt.includes('count')) {
+    generatedCode = `#include <stdio.h>
+
+int main() {
+    int i;
+    
+    printf("Counting from 1 to 10:\\n");
+    for(i = 1; i <= 10; i++) {
+        printf("%d ", i);
+    }
+    printf("\\n");
+    
+    return 0;
+}`;
+    explanation = 'Generated a counting loop program.';
+  } else if (lowerPrompt.includes('array') || lowerPrompt.includes('list')) {
+    generatedCode = `#include <stdio.h>
+
+int main() {
+    int numbers[5] = {1, 2, 3, 4, 5};
+    int i;
+    
+    printf("Array elements: ");
+    for(i = 0; i < 5; i++) {
+        printf("%d ", numbers[i]);
+    }
+    printf("\\n");
+    
+    return 0;
+}`;
+    explanation = 'Generated an array demonstration program.';
+  }
+  
+  return {
+    success: true,
+    files: [{
+      name: 'main.c',
+      content: generatedCode,
+      purpose: 'Main program file'
+    }],
+    mainFile: {
+      name: 'main.c',
+      content: generatedCode
+    },
+    structure: {
+      name: 'Generated C Project'
+    },
+    explanation
+  };
+}
+
 // Generate button handler - setup after DOM is loaded
 function setupGenerateButton() {
   const generateBtn = document.getElementById('generate-btn');
@@ -492,62 +930,73 @@ function setupGenerateButton() {
       }
 
       console.log('Code generation service:', codeGenerationService);
-      if (!codeGenerationService) {
-        showToast('Code generation service not available. Please wait for initialization.', 'error');
-        return;
-      }
-
-  showLoading('🚀 Generating project structure...');
-  showGenerationProgress(true);
-
-  try {
-    const result = await codeGenerationService.generateProjectFromPrompt(promptText);
-
-    if (result.success) {
-      currentProject = result.structure;
-      projectFiles.clear();
-
-      // Add all generated files to project
-      result.files.forEach(file => {
-        projectFiles.set(file.name, file);
-      });
-
-      // Update file explorer
-      updateFileExplorer();
-
-      // Set main file in editor
-      if (result.mainFile) {
-        editor.setValue(result.mainFile.content);
-        currentFileLabel.textContent = result.mainFile.name;
-        currentFilePath = result.mainFile.name;
-      }
-
-      // Update generation panel with explanation
-      updateGenerationPanel(result);
-
-      showToast('🎉 Project generated successfully!', 'success');
       
-      // Clear prompt input
-      promptInput.value = '';
-      
-      // Add to memory
-      if (memoryService) {
-        memoryService.addAIInteraction('code_generation', promptText, result.explanation, {
-          projectStructure: result.structure,
-          filesGenerated: result.files.length
-        });
+      showLoading('🚀 Generating code...');
+      showGenerationProgress(true);
+
+      try {
+        let result;
+        
+        if (codeGenerationService) {
+          // Use AI service if available
+          result = await codeGenerationService.generateProjectFromPrompt(promptText);
+        } else if (window.qwenAI && window.qwenAI.isAvailable) {
+          // Use simple Qwen integration
+          console.log('Using Qwen AI integration');
+          showToast('Using Qwen AI for code generation', 'info');
+          result = await window.qwenAI.generateCode(promptText, 'LAWSA C compiler project');
+        } else {
+          // Use fallback generation
+          console.log('Using fallback code generation');
+          showToast('Using basic code generation (AI service unavailable)', 'warning');
+          result = generateBasicCode(promptText);
+        }
+
+        if (result.success) {
+          currentProject = result.structure;
+          projectFiles.clear();
+
+          // Add all generated files to project
+          result.files.forEach(file => {
+            projectFiles.set(file.name, file);
+          });
+
+          // Update file explorer
+          updateFileExplorer();
+
+          // Set main file in editor
+          if (result.mainFile) {
+            editor.setValue(result.mainFile.content);
+            currentFileLabel.textContent = result.mainFile.name;
+            currentFilePath = result.mainFile.name;
+          }
+
+          // Update generation panel with explanation
+          updateGenerationPanel(result);
+
+          showToast('🎉 Code generated successfully!', 'success');
+          
+          // Clear prompt input
+          promptInput.value = '';
+          
+          // Add to memory
+          if (memoryService) {
+            memoryService.addAIInteraction('code_generation', promptText, result.explanation, {
+              projectStructure: result.structure,
+              filesGenerated: result.files.length
+            });
+          }
+        } else {
+          throw new Error(result.error || 'Failed to generate code');
+        }
+      } catch (error) {
+        console.error('Code generation error:', error);
+        showToast('❌ Failed to generate code: ' + error.message, 'error');
+        updateGenerationPanel({ error: error.message });
+      } finally {
+        hideLoading();
+        showGenerationProgress(false);
       }
-    } else {
-      throw new Error(result.error || 'Failed to generate project');
-    }
-  } catch (error) {
-    console.error('Project generation error:', error);
-    showToast('❌ Failed to generate project: ' + error.message, 'error');
-    updateGenerationPanel({ error: error.message });
-  } finally {
-    hideLoading();
-    showGenerationProgress(false);
-  }
     });
   } else {
     console.error('Generate button not found!');
@@ -715,14 +1164,38 @@ editor?.onDidFocusEditorWidget(() => {
 // Initialize file explorer
 updateFileExplorer();
 
-// Setup generate button after DOM is fully loaded
+// Initialize everything when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('DOM Content Loaded');
+  
+  // Initialize electronAPI
+  if (typeof window.initializeElectronAPI === 'function') {
+    if (window.initializeElectronAPI()) {
+      console.log('Electron API initialized successfully');
+    } else {
+      console.error('Failed to initialize Electron API');
+      showToast('Failed to initialize Electron API', 'error');
+    }
+  } else {
+    console.warn('initializeElectronAPI not available from preload');
+  }
+  
+  // Setup generate button immediately for fallback functionality
   setupGenerateButton();
 });
 
 // Also try to setup immediately in case DOMContentLoaded already fired
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', setupGenerateButton);
+  document.addEventListener('DOMContentLoaded', () => {
+    if (typeof window.initializeElectronAPI === 'function' && window.initializeElectronAPI()) {
+      console.log('Electron API initialized successfully');
+    }
+    setupGenerateButton();
+  });
 } else {
+  // DOM is already ready
+  if (initializeElectronAPI()) {
+    console.log('Electron API initialized successfully');
+  }
   setupGenerateButton();
 }

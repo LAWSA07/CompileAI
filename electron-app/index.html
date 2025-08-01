@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <title>LAWSA Cursor IDE</title>
-  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline';">
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; worker-src 'self' blob:;">
+  
+  <!-- Split.js for resizable panels -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/split.js/1.6.5/split.min.js"></script>
   <style>
     :root {
       --bg-color: #1e1e1e;
@@ -453,11 +456,14 @@
   <div class="loading" id="loading-indicator">⚡ Processing...</div>
   <div class="toast" id="toast-notification"></div>
   
-  <!-- Monaco Editor -->
-  <script src="./node_modules/monaco-editor/min/vs/loader.js"></script>
+  <!-- Monaco Editor from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs/loader.min.js"></script>
   
   <!-- Split.js for resizable panels -->
   <script src="./node_modules/split.js/dist/split.min.js"></script>
+  
+  <!-- Qwen Integration -->
+  <script src="qwen-integration.js"></script>
   
   <!-- Main renderer script -->
   <script src="renderer.js"></script>
