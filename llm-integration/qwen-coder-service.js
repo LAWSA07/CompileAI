@@ -8,478 +8,391 @@
 const OpenRouterClient = require('./openrouter-client');
 
 class QwenCoderService {
-  constructor(apiKey) {
-    this.client = new OpenRouterClient(apiKey);
-    this.model = 'qwen/qwen2.5-coder-7b-instruct';
-    
-    // Compiler-aware system prompts
-    this.systemPrompts = {
-      codeCompletion: this.getCodeCompletionSystemPrompt(),
-      codeRefactoring: this.getCodeRefactoringSystemPrompt(),
-      errorDiagnosis: this.getErrorDiagnosisSystemPrompt(),
-      codeGeneration: this.getCodeGenerationSystemPrompt(),
-      codeReview: this.getCodeReviewSystemPrompt()
-    };
-  }
+    constructor(apiKey) {
+        this.client = new OpenRouterClient(apiKey);
+        this.model = 'qwen/qwen2.5-coder-7b-instruct';
+        this.defaultOptions = {
+            maxTokens: 2048,
+            temperature: 0.1,
+            topP: 1,
+            frequencyPenalty: 0,
+            presencePenalty: 0
+        };
+    }
 
-  /**
-   * Get system prompt for code completion
-   */
-  getCodeCompletionSystemPrompt() {
-    return `You are an expert C programmer and compiler developer. You are working on the LAWSA C compiler project, which is an educational C compiler that translates C code to x86-64 assembly.
+    getCodeCompletionSystemPrompt() {
+        return `You are an expert C programming assistant integrated into the LAWSA C compiler IDE. Your task is to provide intelligent code completion suggestions.
 
-Your task is to provide intelligent code completion suggestions for C code. Consider:
-- The current file context and surrounding code
-- Function signatures and variable declarations
-- C language syntax and best practices
-- Compiler-specific patterns and conventions
-- The LAWSA compiler's capabilities and limitations
+Key responsibilities:
+- Analyze the current code context and cursor position
+- Suggest relevant function names, variable names, and code snippets
+- Provide context-aware completions based on the current file and project structure
+- Follow C programming best practices and the LAWSA compiler's capabilities
+- Consider the current compilation state and any recent errors
 
-Provide only the code completion, no explanations unless specifically requested.`;
-  }
+Current LAWSA compiler supports:
+- Integer arithmetic and local variables
+- Basic control flow (if, while, for)
+- Function definitions and calls
+- Blocks and return statements
+- Assignment operations
+- Basic type system (int, char, float, double, void)
+- Preprocessor directives (#include, #define, #ifdef, etc.)
 
-  /**
-   * Get system prompt for code refactoring
-   */
-  getCodeRefactoringSystemPrompt() {
-    return `You are an expert C programmer and compiler developer working on the LAWSA C compiler project.
+Provide concise, accurate completions that integrate seamlessly with the existing codebase.`;
+    }
+
+    getCodeRefactoringSystemPrompt() {
+        return `You are an expert C programming assistant specializing in code refactoring within the LAWSA C compiler IDE.
 
 Your task is to refactor C code to improve:
 - Readability and maintainability
-- Performance and efficiency
+- Performance optimization
 - Code structure and organization
-- Adherence to C best practices
-- Compatibility with the LAWSA compiler
+- Error handling and robustness
+- Adherence to C programming best practices
 
-Provide the refactored code with minimal explanations. Focus on practical improvements that work with the LAWSA compiler's capabilities.`;
-  }
+Consider the LAWSA compiler's capabilities:
+- Integer arithmetic and local variables
+- Basic control flow (if, while, for)
+- Function definitions and calls
+- Blocks and return statements
+- Assignment operations
+- Basic type system (int, char, float, double, void)
+- Preprocessor directives (#include, #define, #ifdef, etc.)
 
-  /**
-   * Get system prompt for error diagnosis
-   */
-  getErrorDiagnosisSystemPrompt() {
-    return `You are an expert C programmer and compiler developer working on the LAWSA C compiler project.
-
-Your task is to diagnose and fix C compilation errors. Consider:
-- The specific error message and location
-- The LAWSA compiler's parsing and code generation capabilities
-- Common C programming mistakes and their fixes
-- Compiler-specific limitations and workarounds
-- Best practices for the LAWSA compiler
-
-Provide clear explanations of the error and practical fixes that work with the LAWSA compiler.`;
-  }
-
-  /**
-   * Get system prompt for code generation
-   */
-  getCodeGenerationSystemPrompt() {
-    return `You are an expert C programmer and compiler developer working on the LAWSA C compiler project.
-
-Your task is to generate C code based on requirements. Consider:
-- The LAWSA compiler's supported C language subset
-- x86-64 assembly generation requirements
-- Educational clarity and learning objectives
-- Performance and efficiency considerations
-- Best practices for compiler development
-
-Generate working C code that can be compiled by the LAWSA compiler and produces correct x86-64 assembly.`;
-  }
-
-  /**
-   * Get system prompt for code review
-   */
-  getCodeReviewSystemPrompt() {
-    return `You are an expert C programmer and compiler developer working on the LAWSA C compiler project.
-
-Your task is to review C code for:
-- Correctness and functionality
-- Performance and efficiency
-- Readability and maintainability
-- Adherence to C best practices
-- Compatibility with the LAWSA compiler
-- Educational value and learning opportunities
-
-Provide constructive feedback and specific suggestions for improvement.`;
-  }
-
-  /**
-   * Generate code completion suggestions
-   */
-  async generateCodeCompletion(context, cursorPosition, selectedCode = '') {
-    const prompt = this.buildCompletionPrompt(context, cursorPosition, selectedCode);
-    
-    const messages = [
-      {
-        role: 'user',
-        content: prompt
-      }
-    ];
-
-    try {
-      const response = await this.client.generateCompletion(messages, {
-        model: this.model,
-        systemPrompt: this.systemPrompts.codeCompletion,
-        temperature: 0.1,
-        maxTokens: 1024
-      });
-
-      return this.parseCompletionResponse(response);
-    } catch (error) {
-      console.error('Code completion error:', error);
-      throw error;
+Provide refactored code that:
+- Maintains the original functionality
+- Improves code quality and structure
+- Is compatible with the LAWSA compiler
+- Includes clear explanations of changes made`;
     }
-  }
 
-  /**
-   * Generate code refactoring suggestions
-   */
-  async generateCodeRefactoring(context, code, refactoringType = 'general') {
-    const prompt = this.buildRefactoringPrompt(context, code, refactoringType);
-    
-    const messages = [
-      {
-        role: 'user',
-        content: prompt
-      }
-    ];
+    getErrorDiagnosisSystemPrompt() {
+        return `You are an expert C programming assistant specializing in error diagnosis for the LAWSA C compiler.
 
-    try {
-      const response = await this.client.generateCompletion(messages, {
-        model: this.model,
-        systemPrompt: this.systemPrompts.codeRefactoring,
-        temperature: 0.2,
-        maxTokens: 2048
-      });
+Your task is to analyze compilation errors and provide:
+- Clear explanations of what caused the error
+- Specific suggestions for fixing the issue
+- Code examples showing the correct approach
+- Prevention tips for similar errors
 
-      return this.parseRefactoringResponse(response);
-    } catch (error) {
-      console.error('Code refactoring error:', error);
-      throw error;
+Consider the LAWSA compiler's specific error patterns:
+- Syntax errors in C code
+- Type mismatches and declaration issues
+- Missing semicolons, brackets, or parentheses
+- Undefined variables or functions
+- Preprocessor directive errors
+- Memory and scope issues
+
+Provide actionable, step-by-step solutions that help users understand and fix their compilation errors.`;
     }
-  }
 
-  /**
-   * Diagnose compilation errors
-   */
-  async diagnoseError(context, errorMessage, code) {
-    const prompt = this.buildErrorDiagnosisPrompt(context, errorMessage, code);
-    
-    const messages = [
-      {
-        role: 'user',
-        content: prompt
-      }
-    ];
+    getCodeGenerationSystemPrompt() {
+        return `You are an expert C programming assistant for the LAWSA C compiler IDE, specializing in code generation.
 
-    try {
-      const response = await this.client.generateCompletion(messages, {
-        model: this.model,
-        systemPrompt: this.systemPrompts.errorDiagnosis,
-        temperature: 0.1,
-        maxTokens: 1024
-      });
+Your task is to generate C code based on user requirements, considering:
+- LAWSA compiler capabilities and limitations
+- C programming best practices
+- Efficient and readable code structure
+- Proper error handling and validation
 
-      return this.parseErrorDiagnosisResponse(response);
-    } catch (error) {
-      console.error('Error diagnosis error:', error);
-      throw error;
+LAWSA compiler supports:
+- Integer arithmetic and local variables
+- Basic control flow (if, while, for)
+- Function definitions and calls
+- Blocks and return statements
+- Assignment operations
+- Basic type system (int, char, float, double, void)
+- Preprocessor directives (#include, #define, #ifdef, etc.)
+
+Generate code that:
+- Is immediately compilable with LAWSA
+- Follows C programming conventions
+- Includes appropriate comments and documentation
+- Handles edge cases and error conditions
+- Is optimized for the LAWSA compiler's capabilities`;
     }
-  }
 
-  /**
-   * Generate code based on requirements
-   */
-  async generateCode(context, requirements) {
-    const prompt = this.buildCodeGenerationPrompt(context, requirements);
-    
-    const messages = [
-      {
-        role: 'user',
-        content: prompt
-      }
-    ];
+    getCodeReviewSystemPrompt() {
+        return `You are an expert C programming code reviewer for the LAWSA C compiler IDE.
 
-    try {
-      const response = await this.client.generateCompletion(messages, {
-        model: this.model,
-        systemPrompt: this.systemPrompts.codeGeneration,
-        temperature: 0.3,
-        maxTokens: 2048
-      });
+Your task is to review C code and provide feedback on:
+- Code quality and readability
+- Potential bugs and issues
+- Performance optimizations
+- Security considerations
+- Adherence to C programming best practices
+- Compatibility with LAWSA compiler
 
-      return this.parseCodeGenerationResponse(response);
-    } catch (error) {
-      console.error('Code generation error:', error);
-      throw error;
+Consider LAWSA compiler specifics:
+- Supported language features and limitations
+- Common compilation issues
+- Performance characteristics
+- Error patterns and debugging tips
+
+Provide constructive feedback that helps improve code quality while working within LAWSA's capabilities.`;
     }
-  }
 
-  /**
-   * Review code and provide feedback
-   */
-  async reviewCode(context, code) {
-    const prompt = this.buildCodeReviewPrompt(context, code);
-    
-    const messages = [
-      {
-        role: 'user',
-        content: prompt
-      }
-    ];
+    async generateCodeCompletion(context, cursorPosition, selectedText = '') {
+        const prompt = this.buildCompletionPrompt(context, cursorPosition, selectedText);
+        const systemPrompt = this.getCodeCompletionSystemPrompt();
+        
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+        ];
 
-    try {
-      const response = await this.client.generateCompletion(messages, {
-        model: this.model,
-        systemPrompt: this.systemPrompts.codeReview,
-        temperature: 0.2,
-        maxTokens: 1024
-      });
-
-      return this.parseCodeReviewResponse(response);
-    } catch (error) {
-      console.error('Code review error:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Build completion prompt
-   */
-  buildCompletionPrompt(context, cursorPosition, selectedCode) {
-    const { currentFile, projectFiles, index } = context;
-    
-    let prompt = `Context: You are working on the LAWSA C compiler project.\n\n`;
-    
-    if (currentFile) {
-      prompt += `Current file: ${currentFile.path}\n`;
-      prompt += `Cursor position: Line ${cursorPosition.line}, Column ${cursorPosition.column}\n\n`;
-      
-      if (selectedCode) {
-        prompt += `Selected code:\n\`\`\`c\n${selectedCode}\n\`\`\`\n\n`;
-      }
-      
-      prompt += `Current file content:\n\`\`\`c\n${currentFile.content}\n\`\`\`\n\n`;
-    }
-    
-    prompt += `Available functions in project:\n`;
-    for (const [filePath, fileIndex] of Object.entries(index.files)) {
-      for (const func of fileIndex.functions) {
-        prompt += `- ${func.returnType} ${func.name}() (in ${filePath})\n`;
-      }
-    }
-    
-    prompt += `\nPlease provide intelligent code completion suggestions for the current cursor position.`;
-    
-    return prompt;
-  }
-
-  /**
-   * Build refactoring prompt
-   */
-  buildRefactoringPrompt(context, code, refactoringType) {
-    let prompt = `Context: You are working on the LAWSA C compiler project.\n\n`;
-    prompt += `Code to refactor:\n\`\`\`c\n${code}\n\`\`\`\n\n`;
-    prompt += `Refactoring type: ${refactoringType}\n\n`;
-    prompt += `Please refactor this code to improve readability, maintainability, and adherence to C best practices while ensuring compatibility with the LAWSA compiler.`;
-    
-    return prompt;
-  }
-
-  /**
-   * Build error diagnosis prompt
-   */
-  buildErrorDiagnosisPrompt(context, errorMessage, code) {
-    let prompt = `Context: You are working on the LAWSA C compiler project.\n\n`;
-    prompt += `Error message: ${errorMessage}\n\n`;
-    prompt += `Code with error:\n\`\`\`c\n${code}\n\`\`\`\n\n`;
-    prompt += `Please diagnose this compilation error and provide a fix that works with the LAWSA compiler.`;
-    
-    return prompt;
-  }
-
-  /**
-   * Build code generation prompt
-   */
-  buildCodeGenerationPrompt(context, requirements) {
-    let prompt = `Context: You are working on the LAWSA C compiler project.\n\n`;
-    prompt += `Requirements:\n${requirements}\n\n`;
-    prompt += `Please generate C code that meets these requirements and can be compiled by the LAWSA compiler.`;
-    
-    return prompt;
-  }
-
-  /**
-   * Build code review prompt
-   */
-  buildCodeReviewPrompt(context, code) {
-    let prompt = `Context: You are working on the LAWSA C compiler project.\n\n`;
-    prompt += `Code to review:\n\`\`\`c\n${code}\n\`\`\`\n\n`;
-    prompt += `Please review this code for correctness, performance, readability, and compatibility with the LAWSA compiler.`;
-    
-    return prompt;
-  }
-
-  /**
-   * Parse completion response
-   */
-  parseCompletionResponse(response) {
-    const content = response.choices?.[0]?.message?.content || '';
-    
-    // Extract code suggestions
-    const suggestions = [];
-    const codeBlocks = content.match(/```c?\n([\s\S]*?)\n```/g);
-    
-    if (codeBlocks) {
-      for (const block of codeBlocks) {
-        const code = block.replace(/```c?\n/, '').replace(/\n```/, '');
-        suggestions.push({
-          type: 'code',
-          content: code,
-          confidence: 0.9
-        });
-      }
-    }
-    
-    // Extract inline suggestions
-    const inlineSuggestions = content.match(/([a-zA-Z_][a-zA-Z0-9_]*\s*[=;(){}[\]]*)/g);
-    if (inlineSuggestions) {
-      for (const suggestion of inlineSuggestions) {
-        suggestions.push({
-          type: 'inline',
-          content: suggestion.trim(),
-          confidence: 0.7
-        });
-      }
-    }
-    
-    return {
-      suggestions,
-      explanation: content,
-      model: this.model
-    };
-  }
-
-  /**
-   * Parse refactoring response
-   */
-  parseRefactoringResponse(response) {
-    const content = response.choices?.[0]?.message?.content || '';
-    
-    // Extract refactored code
-    const codeBlocks = content.match(/```c?\n([\s\S]*?)\n```/g);
-    const refactoredCode = codeBlocks ? codeBlocks[0].replace(/```c?\n/, '').replace(/\n```/, '') : content;
-    
-    return {
-      refactoredCode,
-      explanation: content,
-      model: this.model
-    };
-  }
-
-  /**
-   * Parse error diagnosis response
-   */
-  parseErrorDiagnosisResponse(response) {
-    const content = response.choices?.[0]?.message?.content || '';
-    
-    return {
-      diagnosis: content,
-      suggestedFix: this.extractSuggestedFix(content),
-      model: this.model
-    };
-  }
-
-  /**
-   * Parse code generation response
-   */
-  parseCodeGenerationResponse(response) {
-    const content = response.choices?.[0]?.message?.content || '';
-    
-    // Extract generated code
-    const codeBlocks = content.match(/```c?\n([\s\S]*?)\n```/g);
-    const generatedCode = codeBlocks ? codeBlocks[0].replace(/```c?\n/, '').replace(/\n```/, '') : content;
-    
-    return {
-      generatedCode,
-      explanation: content,
-      model: this.model
-    };
-  }
-
-  /**
-   * Parse code review response
-   */
-  parseCodeReviewResponse(response) {
-    const content = response.choices?.[0]?.message?.content || '';
-    
-    return {
-      review: content,
-      suggestions: this.extractReviewSuggestions(content),
-      model: this.model
-    };
-  }
-
-  /**
-   * Extract suggested fix from diagnosis
-   */
-  extractSuggestedFix(content) {
-    const fixMatch = content.match(/Suggested fix:\s*\n```c?\n([\s\S]*?)\n```/);
-    return fixMatch ? fixMatch[1] : null;
-  }
-
-  /**
-   * Extract review suggestions
-   */
-  extractReviewSuggestions(content) {
-    const suggestions = [];
-    const lines = content.split('\n');
-    
-    for (const line of lines) {
-      if (line.match(/^[-*]\s+/)) {
-        suggestions.push(line.replace(/^[-*]\s+/, ''));
-      }
-    }
-    
-    return suggestions;
-  }
-
-  /**
-   * Test the service
-   */
-  async testService() {
-    try {
-      const testContext = {
-        currentFile: {
-          path: 'test.c',
-          content: '#include <stdio.h>\n\nint main() {\n    printf("Hello, World!\\n");\n    return 0;\n}'
-        },
-        projectFiles: ['test.c'],
-        index: {
-          files: {
-            'test.c': {
-              functions: [{ name: 'main', returnType: 'int', line: 4 }],
-              variables: [],
-              imports: ['stdio.h']
-            }
-          }
+        try {
+            const response = await this.client.generateCompletion(this.model, messages, this.defaultOptions);
+            return this.parseCompletionResponse(response);
+        } catch (error) {
+            console.error('Code completion error:', error);
+            throw error;
         }
-      };
-      
-      const completion = await this.generateCodeCompletion(testContext, { line: 5, column: 1 });
-      return {
-        success: true,
-        completion: completion,
-        message: 'Qwen Coder service is working correctly'
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message,
-        message: 'Qwen Coder service test failed'
-      };
     }
-  }
+
+    async generateCodeRefactoring(code, requirements = '') {
+        const prompt = this.buildRefactoringPrompt(code, requirements);
+        const systemPrompt = this.getCodeRefactoringSystemPrompt();
+        
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+        ];
+
+        try {
+            const response = await this.client.generateCompletion(this.model, messages, this.defaultOptions);
+            return this.parseRefactoringResponse(response);
+        } catch (error) {
+            console.error('Code refactoring error:', error);
+            throw error;
+        }
+    }
+
+    async diagnoseError(errorMessage, code, context = '') {
+        const prompt = this.buildErrorDiagnosisPrompt(errorMessage, code, context);
+        const systemPrompt = this.getErrorDiagnosisSystemPrompt();
+        
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+        ];
+
+        try {
+            const response = await this.client.generateCompletion(this.model, messages, this.defaultOptions);
+            return this.parseErrorDiagnosisResponse(response);
+        } catch (error) {
+            console.error('Error diagnosis error:', error);
+            throw error;
+        }
+    }
+
+    async generateCode(requirements, context = '') {
+        const prompt = this.buildCodeGenerationPrompt(requirements, context);
+        const systemPrompt = this.getCodeGenerationSystemPrompt();
+        
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+        ];
+
+        try {
+            const response = await this.client.generateCompletion(this.model, messages, this.defaultOptions);
+            return this.parseCodeGenerationResponse(response);
+        } catch (error) {
+            console.error('Code generation error:', error);
+            throw error;
+        }
+    }
+
+    async reviewCode(code, focusAreas = []) {
+        const prompt = this.buildCodeReviewPrompt(code, focusAreas);
+        const systemPrompt = this.getCodeReviewSystemPrompt();
+        
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+        ];
+
+        try {
+            const response = await this.client.generateCompletion(this.model, messages, this.defaultOptions);
+            return this.parseCodeReviewResponse(response);
+        } catch (error) {
+            console.error('Code review error:', error);
+            throw error;
+        }
+    }
+
+    buildCompletionPrompt(context, cursorPosition, selectedText) {
+        return `Context: ${context}
+
+Cursor Position: Line ${cursorPosition.line}, Column ${cursorPosition.column}
+Selected Text: ${selectedText}
+
+Please provide intelligent code completion suggestions for the current cursor position. Consider the surrounding code context and provide relevant completions.`;
+    }
+
+    buildRefactoringPrompt(code, requirements) {
+        return `Code to refactor:
+\`\`\`c
+${code}
+\`\`\`
+
+Refactoring requirements: ${requirements}
+
+Please provide refactored code that improves the original while maintaining functionality.`;
+    }
+
+    buildErrorDiagnosisPrompt(errorMessage, code, context) {
+        return `Compilation Error: ${errorMessage}
+
+Code:
+\`\`\`c
+${code}
+\`\`\`
+
+Context: ${context}
+
+Please diagnose the error and provide a solution.`;
+    }
+
+    buildCodeGenerationPrompt(requirements, context) {
+        return `Requirements: ${requirements}
+
+Context: ${context}
+
+Please generate C code that meets these requirements and is compatible with the LAWSA compiler.`;
+    }
+
+    buildCodeReviewPrompt(code, focusAreas) {
+        return `Code to review:
+\`\`\`c
+${code}
+\`\`\`
+
+Focus areas: ${focusAreas.join(', ')}
+
+Please provide a comprehensive code review.`;
+    }
+
+    parseCompletionResponse(response) {
+        const content = response.choices?.[0]?.message?.content || '';
+        return {
+            suggestions: this.extractSuggestions(content),
+            explanation: content
+        };
+    }
+
+    parseRefactoringResponse(response) {
+        const content = response.choices?.[0]?.message?.content || '';
+        return {
+            refactoredCode: this.extractSuggestedFix(content),
+            explanation: content,
+            changes: this.extractChanges(content)
+        };
+    }
+
+    parseErrorDiagnosisResponse(response) {
+        const content = response.choices?.[0]?.message?.content || '';
+        return {
+            diagnosis: content,
+            suggestedFix: this.extractSuggestedFix(content),
+            explanation: content
+        };
+    }
+
+    parseCodeGenerationResponse(response) {
+        const content = response.choices?.[0]?.message?.content || '';
+        return {
+            generatedCode: this.extractSuggestedFix(content),
+            explanation: content
+        };
+    }
+
+    parseCodeReviewResponse(response) {
+        const content = response.choices?.[0]?.message?.content || '';
+        return {
+            review: content,
+            suggestions: this.extractReviewSuggestions(content),
+            issues: this.extractIssues(content)
+        };
+    }
+
+    extractSuggestedFix(content) {
+        const codeBlockRegex = /```c?\s*\n([\s\S]*?)\n```/;
+        const match = content.match(codeBlockRegex);
+        return match ? match[1].trim() : '';
+    }
+
+    extractSuggestions(content) {
+        const suggestions = [];
+        const lines = content.split('\n');
+        
+        for (const line of lines) {
+            if (line.trim() && !line.startsWith('```')) {
+                suggestions.push(line.trim());
+            }
+        }
+        
+        return suggestions;
+    }
+
+    extractChanges(content) {
+        const changes = [];
+        const lines = content.split('\n');
+        
+        for (const line of lines) {
+            if (line.includes('change') || line.includes('improve') || line.includes('fix')) {
+                changes.push(line.trim());
+            }
+        }
+        
+        return changes;
+    }
+
+    extractReviewSuggestions(content) {
+        const suggestions = [];
+        const lines = content.split('\n');
+        
+        for (const line of lines) {
+            if (line.includes('suggestion') || line.includes('recommend') || line.includes('consider')) {
+                suggestions.push(line.trim());
+            }
+        }
+        
+        return suggestions;
+    }
+
+    extractIssues(content) {
+        const issues = [];
+        const lines = content.split('\n');
+        
+        for (const line of lines) {
+            if (line.includes('issue') || line.includes('problem') || line.includes('error') || line.includes('bug')) {
+                issues.push(line.trim());
+            }
+        }
+        
+        return issues;
+    }
+
+    async testService() {
+        try {
+            const testResponse = await this.generateCodeCompletion('int main() {\n    int x = 10;\n    ', { line: 2, column: 5 });
+            return {
+                success: true,
+                message: 'Qwen Coder service is working correctly',
+                testResponse
+            };
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message,
+                message: 'Qwen Coder service test failed'
+            };
+        }
+    }
 }
 
 module.exports = QwenCoderService; 

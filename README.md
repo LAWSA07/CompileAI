@@ -1,46 +1,98 @@
-# LAWSA Compiler
+# LAWSA Cursor IDE
 
-LAWSA (Let's Approach Writing a Simple Assembler) is an educational compiler for a subset of C, designed for learning compiler concepts.
+LAWSA Cursor IDE is an AI-powered development environment that combines the LAWSA C compiler with advanced code assistance features, inspired by Cursor IDE. It provides intelligent code completion, refactoring, error diagnosis, and code generation using the Qwen Coder model via OpenRouter.
 
 ## Features
 
-- Supports basic C syntax including:
+### Core IDE Features
+- **Monaco Editor Integration**: Professional code editor with syntax highlighting
+- **Real-time Compilation**: Instant compilation and assembly generation
+- **Multi-panel Interface**: Console, Assembly, and Diff panels
+- **File Management**: Open, save, and manage C source files
+- **Keyboard Shortcuts**: Efficient workflow with keyboard shortcuts
+
+### AI-Powered Features
+- **Intelligent Code Completion**: Context-aware suggestions using Qwen Coder
+- **Code Refactoring**: AI-assisted code improvement and restructuring
+- **Error Diagnosis**: Smart error analysis and fix suggestions
+- **Code Generation**: Generate code from natural language requirements
+- **Code Review**: AI-powered code review and feedback
+
+### Memory System
+- **Persistent Context**: Remembers project structure and file history
+- **AI Interaction History**: Tracks all AI interactions for context
+- **Smart Search**: Search through code, history, and AI interactions
+- **Project Intelligence**: Learns from your coding patterns
+
+### Compiler Features
+- **LAWSA C Compiler**: Educational C compiler with x86-64 assembly output
+- **Basic C Syntax Support**:
   - Integer arithmetic and logic operations
   - Control structures (if/else, while, for)
   - Function definitions and calls
   - Arrays and pointers
   - Character arrays
 
-## Using LAWSA
+## Getting Started
 
-There are two ways to use the LAWSA compiler:
+### Prerequisites
+- Node.js (v16 or higher)
+- npm (comes with Node.js)
+- OpenRouter API key (for AI features)
 
-### 1. GUI Interface (LAWSA-IDE)
+### Installation
 
-For interactive coding and testing, use the LAWSA-IDE:
+1. **Clone the repository**:
+   ```bash
+   git clone <repository-url>
+   cd compiler2
+   ```
 
+2. **Install dependencies**:
+   ```bash
+   cd electron-app
+   npm install
+   ```
+
+3. **Configure AI features** (optional):
+   - Edit `config/openrouter.json` to add your OpenRouter API key
+   - Or set the `LAWSA_API_KEY` environment variable
+
+### Running the IDE
+
+#### Quick Start
+```bash
+node start-cursor-ide.js
 ```
-python lawsa-ide.py
+
+#### Manual Start
+```bash
+cd electron-app
+npm start
 ```
 
-The IDE provides:
-- Code editor with syntax highlighting
-- One-click compilation and execution
-- Assembly code viewer
-- Output panel for program results
+### Using the IDE
 
-### 2. Command Line Interface
+1. **Code Editor**: Write C code in the Monaco editor
+2. **Compile**: Click "Compile" or press `Ctrl+Enter`
+3. **Run**: Click "Run" to execute the compiled program
+4. **AI Features**: 
+   - Code completion appears automatically as you type
+   - Select code and click "Refactor" for AI-assisted refactoring
+   - Errors are automatically diagnosed with AI suggestions
+5. **Panels**: 
+   - **Console**: View program output and errors
+   - **Assembly**: See generated x86-64 assembly code
+   - **Diff**: View changes after refactoring
 
-For batch processing or scripting, use the command-line interface:
+### Example Workflow
 
-```
-lawsa-compile.bat example.c [--run] [--keep] [--asm]
-```
-
-Options:
-- `--run`: Execute the program after compilation
-- `--keep`: Keep intermediate files (assembly, object files)
-- `--asm`: Display the generated assembly code
+1. Open the IDE
+2. Write C code in the editor
+3. Press `Ctrl+Enter` to compile
+4. View assembly output in the Assembly panel
+5. Use AI features for code completion and refactoring
+6. Save your work with `Ctrl+S`
 
 ## Example Program
 
@@ -52,12 +104,27 @@ int main() {
 }
 ```
 
-## Compiler Architecture
+## Architecture
 
+### IDE Architecture
+The LAWSA Cursor IDE is built with a modular, service-oriented architecture:
+
+- **Electron Framework**: Cross-platform desktop application
+- **Monaco Editor**: Professional code editor with C syntax highlighting
+- **Service Layer**: Memory, LLM, and AI completion services
+- **LAWSA Compiler**: Core C compiler with x86-64 assembly output
+
+### AI Integration
+- **OpenRouter API**: Access to Qwen Coder model
+- **Memory System**: Persistent storage of project context and AI interactions
+- **Intelligent Completion**: Context-aware code suggestions
+- **Error Diagnosis**: AI-powered error analysis and fixes
+
+### Compiler Architecture
 LAWSA is structured as a simple multi-pass compiler:
 1. Lexical analysis - Tokenizes the input source
 2. Parsing - Builds an Abstract Syntax Tree (AST)
-3. Code generation - Produces x86 assembly code
+3. Code generation - Produces x86-64 assembly code
 
 The compiler outputs assembly code that can be assembled and linked using GCC.
 
@@ -82,11 +149,27 @@ This project is open source and available for educational purposes.
 
 ## Project Structure
 
+### Core Compiler Files
 - `tokenize.c` - Lexical analyzer (tokenizer)
 - `parse.c` - Parser (AST builder)
 - `codegen.c` - Code generator (assembly output)
 - `type.c` - Type system
 - `main.c` - Entry point
+
+### IDE Components
+- `electron-app/` - Electron application
+  - `src/services/` - Service layer (Memory, LLM, AI Completion)
+  - `renderer.js` - Main UI logic
+  - `index.html` - Application interface
+- `memory-system/` - Persistent memory implementation
+- `llm-integration/` - OpenRouter and Qwen Coder integration
+- `config/` - Configuration files
+- `docs/` - Documentation and API reference
+
+### Configuration
+- `config/openrouter.json` - OpenRouter API configuration
+- `config/memory.json` - Memory system settings
+- `config/ide.json` - IDE behavior configuration
 
 ## Educational Purpose
 

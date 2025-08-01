@@ -9,214 +9,212 @@ const path = require('path');
 const MemoryStore = require('../../../memory-system/memory-store');
 
 class MemoryService {
-  constructor(projectPath) {
-    this.projectPath = projectPath;
-    this.memoryStore = new MemoryStore(projectPath);
-    this.isInitialized = false;
-  }
-
-  /**
-   * Initialize the memory service
-   */
-  async initialize() {
-    try {
-      // Test memory store
-      await this.memoryStore.loadMemory();
-      this.isInitialized = true;
-      console.log('Memory service initialized successfully');
-      return { success: true };
-    } catch (error) {
-      console.error('Memory service initialization failed:', error);
-      return { success: false, error: error.message };
+    constructor() {
+        this.memoryStore = null;
+        this.isInitialized = false;
     }
-  }
 
-  /**
-   * Update file in memory
-   */
-  async updateFile(filePath, content, ast = null, errors = [], suggestions = []) {
-    try {
-      this.memoryStore.updateFileMemory(filePath, content, ast, errors, suggestions);
-      
-      // Add to history
-      this.memoryStore.addToHistory({
-        type: 'file_update',
-        file: filePath,
-        timestamp: new Date().toISOString()
-      });
-      
-      return { success: true };
-    } catch (error) {
-      console.error('Error updating file in memory:', error);
-      return { success: false, error: error.message };
+    initialize(projectPath) {
+        try {
+            this.memoryStore = new MemoryStore(projectPath);
+            this.isInitialized = true;
+            console.log('Memory service initialized for project:', projectPath);
+            return true;
+        } catch (error) {
+            console.error('Failed to initialize memory service:', error);
+            return false;
+        }
     }
-  }
 
-  /**
-   * Update context
-   */
-  async updateContext(context) {
-    try {
-      this.memoryStore.updateContext(context);
-      return { success: true };
-    } catch (error) {
-      console.error('Error updating context:', error);
-      return { success: false, error: error.message };
+    updateFile(filePath, content) {
+        if (!this.isInitialized) {
+            throw new Error('Memory service not initialized');
+        }
+        
+        try {
+            this.memoryStore.updateFileIndex(filePath, content);
+            return { success: true };
+        } catch (error) {
+            console.error('Error updating file in memory:', error);
+            return { success: false, error: error.message };
+        }
     }
-  }
 
-  /**
-   * Get AI context
-   */
-  async getAIContext() {
-    try {
-      return this.memoryStore.getAIContext();
-    } catch (error) {
-      console.error('Error getting AI context:', error);
-      return null;
+    updateContext(context) {
+        if (!this.isInitialized) {
+            throw new Error('Memory service not initialized');
+        }
+        
+        try {
+            this.memoryStore.updateContext(context);
+            return { success: true };
+        } catch (error) {
+            console.error('Error updating context in memory:', error);
+            return { success: false, error: error.message };
+        }
     }
-  }
 
-  /**
-   * Search memory
-   */
-  async searchMemory(query, type = 'all') {
-    try {
-      return this.memoryStore.searchMemory(query, type);
-    } catch (error) {
-      console.error('Error searching memory:', error);
-      return [];
+    getAIContext() {
+        if (!this.isInitialized) {
+            throw new Error('Memory service not initialized');
+        }
+        
+        try {
+            return this.memoryStore.getAIContext();
+        } catch (error) {
+            console.error('Error getting AI context:', error);
+            return null;
+        }
     }
-  }
 
-  /**
-   * Add AI interaction
-   */
-  async addAIInteraction(interaction) {
-    try {
-      this.memoryStore.addAIInteraction(interaction);
-      return { success: true };
-    } catch (error) {
-      console.error('Error adding AI interaction:', error);
-      return { success: false, error: error.message };
+    searchMemory(query) {
+        if (!this.isInitialized) {
+            throw new Error('Memory service not initialized');
+        }
+        
+        try {
+            return this.memoryStore.searchMemory(query);
+        } catch (error) {
+            console.error('Error searching memory:', error);
+            return [];
+        }
     }
-  }
 
-  /**
-   * Get memory statistics
-   */
-  async getMemoryStats() {
-    try {
-      const memory = this.memoryStore.memory;
-      return {
-        files: Object.keys(memory.files).length,
-        history: memory.history.length,
-        aiInteractions: memory.aiInteractions.length,
-        lastModified: memory.lastModified
-      };
-    } catch (error) {
-      console.error('Error getting memory stats:', error);
-      return null;
+    addAIInteraction(type, prompt, response, metadata = {}) {
+        if (!this.isInitialized) {
+            throw new Error('Memory service not initialized');
+        }
+        
+        try {
+            this.memoryStore.addAIInteraction(type, prompt, response, metadata);
+            return { success: true };
+        } catch (error) {
+            console.error('Error adding AI interaction:', error);
+            return { success: false, error: error.message };
+        }
     }
-  }
 
-  /**
-   * Clear memory
-   */
-  async clearMemory() {
-    try {
-      this.memoryStore.clearMemory();
-      return { success: true };
-    } catch (error) {
-      console.error('Error clearing memory:', error);
-      return { success: false, error: error.message };
+    getMemoryStats() {
+        if (!this.isInitialized) {
+            return { initialized: false };
+        }
+        
+        try {
+            const memory = this.memoryStore.memory;
+            return {
+                initialized: true,
+                projectId: memory.project.id,
+                projectName: memory.project.name,
+                filesCount: Object.keys(memory.files).length,
+                historyCount: memory.history.length,
+                aiInteractionsCount: memory.aiInteractions.length,
+                lastModified: memory.project.lastModified
+            };
+        } catch (error) {
+            console.error('Error getting memory stats:', error);
+            return { initialized: false, error: error.message };
+        }
     }
-  }
 
-  /**
-   * Export memory
-   */
-  async exportMemory() {
-    try {
-      return this.memoryStore.exportMemory();
-    } catch (error) {
-      console.error('Error exporting memory:', error);
-      return null;
+    clearMemory() {
+        if (!this.isInitialized) {
+            throw new Error('Memory service not initialized');
+        }
+        
+        try {
+            this.memoryStore.clearMemory();
+            return { success: true };
+        } catch (error) {
+            console.error('Error clearing memory:', error);
+            return { success: false, error: error.message };
+        }
     }
-  }
 
-  /**
-   * Import memory
-   */
-  async importMemory(data) {
-    try {
-      this.memoryStore.importMemory(data);
-      return { success: true };
-    } catch (error) {
-      console.error('Error importing memory:', error);
-      return { success: false, error: error.message };
+    exportMemory() {
+        if (!this.isInitialized) {
+            throw new Error('Memory service not initialized');
+        }
+        
+        try {
+            return this.memoryStore.exportMemory();
+        } catch (error) {
+            console.error('Error exporting memory:', error);
+            return null;
+        }
     }
-  }
 
-  /**
-   * Get recent history
-   */
-  async getRecentHistory(limit = 10) {
-    try {
-      return this.memoryStore.memory.history.slice(-limit);
-    } catch (error) {
-      console.error('Error getting recent history:', error);
-      return [];
+    importMemory(memoryData) {
+        if (!this.isInitialized) {
+            throw new Error('Memory service not initialized');
+        }
+        
+        try {
+            const success = this.memoryStore.importMemory(memoryData);
+            return { success };
+        } catch (error) {
+            console.error('Error importing memory:', error);
+            return { success: false, error: error.message };
+        }
     }
-  }
 
-  /**
-   * Get recent AI interactions
-   */
-  async getRecentAIInteractions(limit = 5) {
-    try {
-      return this.memoryStore.memory.aiInteractions.slice(-limit);
-    } catch (error) {
-      console.error('Error getting recent AI interactions:', error);
-      return [];
+    getRecentHistory(limit = 10) {
+        if (!this.isInitialized) {
+            return [];
+        }
+        
+        try {
+            const history = this.memoryStore.memory.history;
+            return history.slice(-limit).reverse();
+        } catch (error) {
+            console.error('Error getting recent history:', error);
+            return [];
+        }
     }
-  }
 
-  /**
-   * Get file information
-   */
-  async getFileInfo(filePath) {
-    try {
-      const relativePath = path.relative(this.projectPath, filePath);
-      return this.memoryStore.memory.files[relativePath] || null;
-    } catch (error) {
-      console.error('Error getting file info:', error);
-      return null;
+    getRecentAIInteractions(limit = 10) {
+        if (!this.isInitialized) {
+            return [];
+        }
+        
+        try {
+            const interactions = this.memoryStore.memory.aiInteractions;
+            return interactions.slice(-limit).reverse();
+        } catch (error) {
+            console.error('Error getting recent AI interactions:', error);
+            return [];
+        }
     }
-  }
 
-  /**
-   * Get project information
-   */
-  async getProjectInfo() {
-    try {
-      return {
-        project: this.memoryStore.memory.project,
-        context: this.memoryStore.memory.context,
-        stats: await this.getMemoryStats()
-      };
-    } catch (error) {
-      console.error('Error getting project info:', error);
-      return null;
+    getFileInfo(filePath) {
+        if (!this.isInitialized) {
+            return null;
+        }
+        
+        try {
+            const relativePath = path.relative(this.memoryStore.projectPath, filePath);
+            return this.memoryStore.memory.files[relativePath] || null;
+        } catch (error) {
+            console.error('Error getting file info:', error);
+            return null;
+        }
     }
-  }
 
-  /**
-   * Check if memory is initialized
-   */
-  isReady() {
-    return this.isInitialized;
-  }
+    getProjectInfo() {
+        if (!this.isInitialized) {
+            return null;
+        }
+        
+        try {
+            return this.memoryStore.memory.project;
+        } catch (error) {
+            console.error('Error getting project info:', error);
+            return null;
+        }
+    }
+
+    isReady() {
+        return this.isInitialized && this.memoryStore !== null;
+    }
 }
 
 module.exports = MemoryService; 

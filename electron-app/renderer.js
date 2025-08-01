@@ -7,6 +7,7 @@ const { ipcRenderer } = window.electronAPI;
 const MemoryService = require('./src/services/memoryService');
 const LLMService = require('./src/services/llmService');
 const AICompletionService = require('./src/services/aiCompletionService');
+const CodeGenerationService = require('./src/services/codeGenerationService');
 
 // Default C code
 const defaultCode = `#include <stdio.h>
@@ -26,6 +27,11 @@ let diffEditor = null;
 let memoryService = null;
 let llmService = null;
 let aiCompletionService = null;
+let codeGenerationService = null;
+
+// Project state
+let projectFiles = new Map();
+let currentProject = null;
 
 // DOM Elements
 const compileBtn = document.getElementById('compile-btn');
@@ -48,11 +54,11 @@ async function initializeServices() {
     showLoading('Initializing AI services...');
     
     // Initialize memory service
-    memoryService = new MemoryService(process.cwd());
-    const memoryResult = await memoryService.initialize();
+    memoryService = new MemoryService();
+    const memoryResult = memoryService.initialize(process.cwd());
     
-    if (!memoryResult.success) {
-      console.error('Memory service initialization failed:', memoryResult.error);
+    if (!memoryResult) {
+      console.error('Memory service initialization failed');
       showToast('Memory service failed to initialize', 'error');
     }
     
@@ -68,7 +74,8 @@ async function initializeServices() {
     
     // Initialize AI completion service
     if (memoryService && llmService) {
-      aiCompletionService = new AICompletionService(memoryService, llmService);
+      aiCompletionService = new AICompletionService(llmService);
+      codeGenerationService = new CodeGenerationService(llmService, memoryService);
       showToast('AI services initialized successfully', 'success');
     }
     
@@ -153,7 +160,7 @@ require(['vs/editor/editor.main'], function() {
   
   // Register AI completion provider
   if (aiCompletionService) {
-    aiCompletionService.registerCompletionProvider(monaco);
+    aiCompletionService.registerCompletionProvider(monaco, editor);
   }
   
   // Mark the editor as initialized
@@ -186,7 +193,7 @@ compileBtn.addEventListener('click', async () => {
   try {
     // Update memory with current code
     if (memoryService && currentFilePath) {
-      await memoryService.updateFile(currentFilePath, code);
+      memoryService.updateFile(currentFilePath, code);
     }
     
     // Compile using the LAWSA compiler
@@ -199,8 +206,7 @@ compileBtn.addEventListener('click', async () => {
       
       // Add to memory history
       if (memoryService) {
-        memoryService.addToHistory({
-          type: 'compilation',
+        memoryService.addToHistory('compilation', {
           success: true,
           output: result.output
         });
@@ -211,8 +217,8 @@ compileBtn.addEventListener('click', async () => {
       
       // Try AI error diagnosis
       if (llmService && memoryService) {
-        const context = await memoryService.getAIContext();
-        const diagnosis = await llmService.diagnoseError(context, result.error, code);
+        const context = memoryService.getAIContext();
+        const diagnosis = await llmService.diagnoseError(result.error, code, context);
         
         if (diagnosis.success) {
           updateConsole(`AI Diagnosis: ${diagnosis.diagnosis}`);
@@ -271,19 +277,18 @@ refactorBtn.addEventListener('click', async () => {
     
     if (llmService && memoryService) {
       // Use AI refactoring
-      const context = await memoryService.getAIContext();
-      const result = await llmService.generateCodeRefactoring(context, textToRefactor);
+      const context = memoryService.getAIContext();
+      const result = await llmService.generateCodeRefactoring(textToRefactor, 'Improve code quality and readability');
       
       if (result.success) {
         refactoredCode = result.refactoredCode;
         
         // Add AI interaction to memory
-        await memoryService.addAIInteraction({
-          type: 'refactoring',
-          originalCode: textToRefactor,
-          refactoredCode: refactoredCode,
-          explanation: result.explanation
-        });
+        memoryService.addAIInteraction('refactoring', 
+          `Refactor this code: ${textToRefactor}`, 
+          result.explanation, 
+          { originalCode: textToRefactor, refactoredCode: refactoredCode }
+        );
       } else {
         throw new Error(result.error);
       }
@@ -328,8 +333,8 @@ openBtn.addEventListener('click', async () => {
       
       // Update memory
       if (memoryService) {
-        await memoryService.updateFile(currentFilePath, result.content);
-        await memoryService.updateContext({
+        memoryService.updateFile(currentFilePath, result.content);
+        memoryService.updateContext({
           currentFile: currentFilePath
         });
       }
@@ -357,7 +362,7 @@ saveBtn.addEventListener('click', async () => {
       
       // Update memory
       if (memoryService) {
-        await memoryService.updateFile(currentFilePath, content);
+        memoryService.updateFile(currentFilePath, content);
       }
       
       showToast('File saved successfully', 'success');
@@ -461,6 +466,243 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// Generate button handler - setup after DOM is loaded
+function setupGenerateButton() {
+  const generateBtn = document.getElementById('generate-btn');
+  console.log('Generate button element:', generateBtn);
+
+  if (generateBtn) {
+    generateBtn.addEventListener('click', async () => {
+      console.log('Generate button clicked!');
+      
+      const promptInput = document.getElementById('prompt-input');
+      console.log('Prompt input element:', promptInput);
+      
+      if (!promptInput) {
+        showToast('Prompt input not found', 'error');
+        return;
+      }
+      
+      const promptText = promptInput.value.trim();
+      console.log('Prompt text:', promptText);
+
+      if (!promptText) {
+        showToast('Please enter a prompt to generate code.', 'warning');
+        return;
+      }
+
+      console.log('Code generation service:', codeGenerationService);
+      if (!codeGenerationService) {
+        showToast('Code generation service not available. Please wait for initialization.', 'error');
+        return;
+      }
+
+  showLoading('🚀 Generating project structure...');
+  showGenerationProgress(true);
+
+  try {
+    const result = await codeGenerationService.generateProjectFromPrompt(promptText);
+
+    if (result.success) {
+      currentProject = result.structure;
+      projectFiles.clear();
+
+      // Add all generated files to project
+      result.files.forEach(file => {
+        projectFiles.set(file.name, file);
+      });
+
+      // Update file explorer
+      updateFileExplorer();
+
+      // Set main file in editor
+      if (result.mainFile) {
+        editor.setValue(result.mainFile.content);
+        currentFileLabel.textContent = result.mainFile.name;
+        currentFilePath = result.mainFile.name;
+      }
+
+      // Update generation panel with explanation
+      updateGenerationPanel(result);
+
+      showToast('🎉 Project generated successfully!', 'success');
+      
+      // Clear prompt input
+      promptInput.value = '';
+      
+      // Add to memory
+      if (memoryService) {
+        memoryService.addAIInteraction('code_generation', promptText, result.explanation, {
+          projectStructure: result.structure,
+          filesGenerated: result.files.length
+        });
+      }
+    } else {
+      throw new Error(result.error || 'Failed to generate project');
+    }
+  } catch (error) {
+    console.error('Project generation error:', error);
+    showToast('❌ Failed to generate project: ' + error.message, 'error');
+    updateGenerationPanel({ error: error.message });
+  } finally {
+    hideLoading();
+    showGenerationProgress(false);
+  }
+    });
+  } else {
+    console.error('Generate button not found!');
+  }
+}
+
+// File explorer update function
+function updateFileExplorer() {
+  const explorer = document.getElementById('file-explorer');
+  if (!explorer) return;
+  
+  explorer.innerHTML = '';
+
+  if (projectFiles.size === 0) {
+    const emptyItem = document.createElement('div');
+    emptyItem.className = 'file-item';
+    emptyItem.textContent = '📂 No files generated yet';
+    emptyItem.style.opacity = '0.6';
+    explorer.appendChild(emptyItem);
+    return;
+  }
+
+  projectFiles.forEach((file, fileName) => {
+    const fileItem = document.createElement('div');
+    fileItem.className = 'file-item';
+    fileItem.dataset.file = fileName;
+    
+    // Add appropriate icon based on file type
+    const icon = fileName.endsWith('.h') ? '📋' : fileName.endsWith('.c') ? '📄' : '📄';
+    fileItem.innerHTML = `${icon} ${fileName}`;
+    
+    fileItem.addEventListener('click', () => {
+      // Remove active class from all items
+      document.querySelectorAll('.file-item').forEach(item => item.classList.remove('active'));
+      fileItem.classList.add('active');
+      
+      // Load file content in editor
+      editor.setValue(file.content);
+      currentFileLabel.textContent = fileName;
+      currentFilePath = fileName;
+      
+      // Update memory with current file
+      if (memoryService) {
+        memoryService.updateContext({
+          currentFile: fileName
+        });
+      }
+    });
+
+    explorer.appendChild(fileItem);
+  });
+  
+  // Update file count in status bar
+  const fileCountElement = document.getElementById('file-count');
+  if (fileCountElement) {
+    const count = projectFiles.size;
+    fileCountElement.textContent = `${count} file${count !== 1 ? 's' : ''}`;
+  }
+}
+
+// Generation panel update function
+function updateGenerationPanel(result) {
+  const generationPanel = document.getElementById('generation-panel');
+  if (!generationPanel) return;
+  
+  if (result.error) {
+    generationPanel.innerHTML = `
+      <div style="color: #f44336; padding: 12px;">
+        <h3>❌ Generation Failed</h3>
+        <p>Error: ${result.error}</p>
+        <p style="margin-top: 8px; opacity: 0.8;">Please try again with a different prompt or check your API connection.</p>
+      </div>
+    `;
+    return;
+  }
+  
+  const filesHtml = result.files?.map(file => 
+    `<div style="margin: 4px 0; padding: 4px 8px; background-color: var(--bg-color); border-radius: 4px;">
+      <span style="color: var(--accent-color);">${file.name}</span> - ${file.purpose || 'Source file'}
+    </div>`
+  ).join('') || '';
+  
+  generationPanel.innerHTML = `
+    <div style="padding: 12px;">
+      <h3 style="color: var(--accent-color); margin-bottom: 12px;">🎉 Generation Successful</h3>
+      
+      <div style="margin-bottom: 16px;">
+        <h4 style="margin-bottom: 8px;">Project Structure:</h4>
+        <div style="background-color: var(--bg-color); padding: 8px; border-radius: 4px; font-family: monospace;">
+          ${result.structure?.name || 'Generated Project'}
+        </div>
+      </div>
+      
+      ${result.files?.length ? `
+        <div style="margin-bottom: 16px;">
+          <h4 style="margin-bottom: 8px;">Generated Files (${result.files.length}):</h4>
+          ${filesHtml}
+        </div>
+      ` : ''}
+      
+      ${result.explanation ? `
+        <div>
+          <h4 style="margin-bottom: 8px;">Explanation:</h4>
+          <div style="background-color: var(--bg-color); padding: 8px; border-radius: 4px; line-height: 1.5;">
+            ${result.explanation}
+          </div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+  
+  // Switch to generation tab
+  document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('.panel-tab[data-panel="generation"]')?.classList.add('active');
+  
+  document.querySelectorAll('.panel-content').forEach(p => p.classList.remove('active'));
+  generationPanel.classList.add('active');
+}
+
+// Generation progress function
+function showGenerationProgress(show) {
+  const progressElement = document.getElementById('generation-progress');
+  const progressFill = document.getElementById('progress-fill');
+  
+  if (!progressElement || !progressFill) return;
+  
+  if (show) {
+    progressElement.style.display = 'block';
+    
+    // Animate progress bar
+    let progress = 0;
+    const interval = setInterval(() => {
+      progress += Math.random() * 15;
+      if (progress > 90) progress = 90;
+      progressFill.style.width = `${progress}%`;
+    }, 500);
+    
+    // Store interval for cleanup
+    progressElement.dataset.interval = interval;
+  } else {
+    // Complete progress and hide
+    progressFill.style.width = '100%';
+    
+    const interval = progressElement.dataset.interval;
+    if (interval) {
+      clearInterval(interval);
+    }
+    
+    setTimeout(() => {
+      progressElement.style.display = 'none';
+      progressFill.style.width = '0%';
+    }, 500);
+  }
+}
+
 // Initialize AI suggestions on editor focus
 editor?.onDidFocusEditorWidget(() => {
   if (aiCompletionService) {
@@ -468,4 +710,19 @@ editor?.onDidFocusEditorWidget(() => {
     const position = editor.getPosition();
     aiCompletionService.generateCompletions(editor.getModel(), position);
   }
-}); 
+});
+
+// Initialize file explorer
+updateFileExplorer();
+
+// Setup generate button after DOM is fully loaded
+document.addEventListener('DOMContentLoaded', () => {
+  setupGenerateButton();
+});
+
+// Also try to setup immediately in case DOMContentLoaded already fired
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', setupGenerateButton);
+} else {
+  setupGenerateButton();
+}

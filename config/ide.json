@@ -1,0 +1,60 @@
+{
+  "editor": {
+    "theme": "vs-dark",
+    "fontSize": 14,
+    "fontFamily": "Consolas, 'Courier New', monospace",
+    "lineNumbers": "on",
+    "wordWrap": "off",
+    "minimap": {
+      "enabled": true
+    },
+    "suggestOnTriggerCharacters": true,
+    "quickSuggestions": {
+      "other": true,
+      "comments": false,
+      "strings": false
+    }
+  },
+  "ai": {
+    "completion": {
+      "enabled": true,
+      "triggerCharacters": [".", " ", "(", "[", "{", "\"", "'", ";", ",", "="],
+      "autoTrigger": true,
+      "cacheTimeout": 300000
+    },
+    "refactoring": {
+      "enabled": true,
+      "autoSuggest": true
+    },
+    "errorDiagnosis": {
+      "enabled": true,
+      "autoTrigger": true
+    },
+    "codeGeneration": {
+      "enabled": true
+    },
+    "codeReview": {
+      "enabled": true
+    }
+  },
+  "panels": {
+    "console": {
+      "enabled": true,
+      "defaultSize": 25
+    },
+    "assembly": {
+      "enabled": true,
+      "defaultSize": 25
+    },
+    "diff": {
+      "enabled": true,
+      "defaultSize": 25
+    }
+  },
+  "shortcuts": {
+    "compile": "Ctrl+Enter",
+    "save": "Ctrl+S",
+    "open": "Ctrl+O",
+    "refactor": "Ctrl+Shift+R"
+  }
+} 

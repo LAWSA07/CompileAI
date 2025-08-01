@@ -1,0 +1,16 @@
+{
+  "apiKey": "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",
+  "baseURL": "https://openrouter.ai/api/v1",
+  "model": "qwen/qwen2.5-coder-7b-instruct",
+  "maxTokens": 2048,
+  "temperature": 0.1,
+  "timeout": 30000,
+  "rateLimit": {
+    "requestsPerMinute": 60,
+    "delayBetweenRequests": 1000
+  },
+  "headers": {
+    "HTTP-Referer": "https://lawsa-cursor-ide.com",
+    "X-Title": "LAWSA Cursor IDE"
+  }
+} 

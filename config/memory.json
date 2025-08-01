@@ -1,0 +1,36 @@
+{
+  "storage": {
+    "type": "json",
+    "directory": ".lawsa-memory",
+    "maxFileSize": "10MB",
+    "compression": false
+  },
+  "indexing": {
+    "enabled": true,
+    "functions": true,
+    "variables": true,
+    "imports": true,
+    "errors": true,
+    "suggestions": true
+  },
+  "history": {
+    "maxEntries": 1000,
+    "autoCleanup": true,
+    "cleanupInterval": 86400000
+  },
+  "aiInteractions": {
+    "maxEntries": 500,
+    "autoCleanup": true,
+    "cleanupInterval": 86400000
+  },
+  "cache": {
+    "enabled": true,
+    "maxSize": 100,
+    "timeout": 300000
+  },
+  "search": {
+    "fuzzy": true,
+    "caseSensitive": false,
+    "maxResults": 50
+  }
+} 

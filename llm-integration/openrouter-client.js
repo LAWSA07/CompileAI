@@ -8,209 +8,143 @@
 const axios = require('axios');
 
 class OpenRouterClient {
-  constructor(apiKey) {
-    this.apiKey = apiKey || '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';
-    this.baseURL = 'https://openrouter.ai/api/v1';
-    this.defaultModel = 'qwen/qwen2.5-coder-7b-instruct';
-    
-    this.client = axios.create({
-      baseURL: this.baseURL,
-      headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://lawsa-cursor-ide.com',
-        'X-Title': 'LAWSA Cursor IDE'
-      },
-      timeout: 60000 // 60 seconds
-    });
-    
-    this.requestCount = 0;
-    this.lastRequestTime = 0;
-    this.rateLimitDelay = 100; // Minimum delay between requests (ms)
-  }
-
-  /**
-   * Make a request to OpenRouter API with rate limiting
-   */
-  async makeRequest(endpoint, data) {
-    // Rate limiting
-    const now = Date.now();
-    const timeSinceLastRequest = now - this.lastRequestTime;
-    
-    if (timeSinceLastRequest < this.rateLimitDelay) {
-      await this.delay(this.rateLimitDelay - timeSinceLastRequest);
-    }
-    
-    try {
-      this.requestCount++;
-      this.lastRequestTime = Date.now();
-      
-      const response = await this.client.post(endpoint, data);
-      return response.data;
-    } catch (error) {
-      console.error('OpenRouter API error:', error.response?.data || error.message);
-      throw new Error(`OpenRouter API error: ${error.response?.data?.error?.message || error.message}`);
-    }
-  }
-
-  /**
-   * Get available models
-   */
-  async getModels() {
-    try {
-      const response = await this.client.get('/models');
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching models:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Generate chat completion
-   */
-  async generateCompletion(messages, options = {}) {
-    const {
-      model = this.defaultModel,
-      temperature = 0.1,
-      maxTokens = 4096,
-      stream = false,
-      systemPrompt = null
-    } = options;
-
-    // Prepare messages
-    let preparedMessages = messages;
-    if (systemPrompt) {
-      preparedMessages = [
-        { role: 'system', content: systemPrompt },
-        ...messages
-      ];
+    constructor(apiKey, baseURL = 'https://openrouter.ai/api/v1') {
+        this.apiKey = apiKey;
+        this.baseURL = baseURL;
+        this.client = axios.create({
+            baseURL,
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://lawsa-cursor-ide.com',
+                'X-Title': 'LAWSA Cursor IDE'
+            },
+            timeout: 30000
+        });
     }
 
-    const requestData = {
-      model: model,
-      messages: preparedMessages,
-      temperature: temperature,
-      max_tokens: maxTokens,
-      stream: stream
-    };
-
-    const endpoint = stream ? '/chat/completions/stream' : '/chat/completions';
-    
-    return await this.makeRequest(endpoint, requestData);
-  }
-
-  /**
-   * Generate streaming completion
-   */
-  async *generateStreamingCompletion(messages, options = {}) {
-    const {
-      model = this.defaultModel,
-      temperature = 0.1,
-      maxTokens = 4096,
-      systemPrompt = null
-    } = options;
-
-    // Prepare messages
-    let preparedMessages = messages;
-    if (systemPrompt) {
-      preparedMessages = [
-        { role: 'system', content: systemPrompt },
-        ...messages
-      ];
-    }
-
-    const requestData = {
-      model: model,
-      messages: preparedMessages,
-      temperature: temperature,
-      max_tokens: maxTokens,
-      stream: true
-    };
-
-    try {
-      const response = await this.client.post('/chat/completions', requestData, {
-        responseType: 'stream'
-      });
-
-      for await (const chunk of response.data) {
-        const lines = chunk.toString().split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            
-            if (data === '[DONE]') {
-              return;
-            }
-            
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.choices && parsed.choices[0]?.delta?.content) {
-                yield parsed.choices[0].delta.content;
-              }
-            } catch (e) {
-              // Ignore parsing errors for incomplete chunks
-            }
-          }
+    async makeRequest(endpoint, data) {
+        try {
+            const response = await this.client.post(endpoint, data);
+            return response.data;
+        } catch (error) {
+            console.error('OpenRouter API Error:', error.response?.data || error.message);
+            throw error;
         }
-      }
-    } catch (error) {
-      console.error('Streaming completion error:', error);
-      throw error;
     }
-  }
 
-  /**
-   * Test API connection
-   */
-  async testConnection() {
-    try {
-      const models = await this.getModels();
-      return {
-        success: true,
-        models: models.data?.length || 0,
-        message: 'OpenRouter API connection successful'
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message,
-        message: 'OpenRouter API connection failed'
-      };
+    async getModels() {
+        try {
+            const response = await this.client.get('/models');
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching models:', error);
+            throw error;
+        }
     }
-  }
 
-  /**
-   * Get usage statistics
-   */
-  async getUsage() {
-    try {
-      const response = await this.client.get('/auth/key');
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching usage:', error);
-      throw error;
+    async generateCompletion(model, messages, options = {}) {
+        const {
+            maxTokens = 2048,
+            temperature = 0.7,
+            topP = 1,
+            frequencyPenalty = 0,
+            presencePenalty = 0,
+            stop = null
+        } = options;
+
+        const data = {
+            model,
+            messages,
+            max_tokens: maxTokens,
+            temperature,
+            top_p: topP,
+            frequency_penalty: frequencyPenalty,
+            presence_penalty: presencePenalty
+        };
+
+        if (stop) {
+            data.stop = Array.isArray(stop) ? stop : [stop];
+        }
+
+        return await this.makeRequest('/chat/completions', data);
     }
-  }
 
-  /**
-   * Utility function for delays
-   */
-  delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
+    async generateStreamingCompletion(model, messages, options = {}) {
+        const {
+            maxTokens = 2048,
+            temperature = 0.7,
+            topP = 1,
+            frequencyPenalty = 0,
+            presencePenalty = 0,
+            stop = null
+        } = options;
 
-  /**
-   * Get request statistics
-   */
-  getStats() {
-    return {
-      requestCount: this.requestCount,
-      lastRequestTime: this.lastRequestTime,
-      rateLimitDelay: this.rateLimitDelay
-    };
-  }
+        const data = {
+            model,
+            messages,
+            max_tokens: maxTokens,
+            temperature,
+            top_p: topP,
+            frequency_penalty: frequencyPenalty,
+            presence_penalty: presencePenalty,
+            stream: true
+        };
+
+        if (stop) {
+            data.stop = Array.isArray(stop) ? stop : [stop];
+        }
+
+        try {
+            const response = await this.client.post('/chat/completions', data, {
+                responseType: 'stream'
+            });
+
+            return response.data;
+        } catch (error) {
+            console.error('Streaming completion error:', error);
+            throw error;
+        }
+    }
+
+    async testConnection() {
+        try {
+            const models = await this.getModels();
+            return {
+                success: true,
+                models: models.data?.length || 0,
+                message: 'Connection successful'
+            };
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message,
+                message: 'Connection failed'
+            };
+        }
+    }
+
+    async getUsage() {
+        try {
+            const response = await this.client.get('/auth/key');
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching usage:', error);
+            throw error;
+        }
+    }
+
+    delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    getStats() {
+        return {
+            baseURL: this.baseURL,
+            hasApiKey: !!this.apiKey,
+            apiKeyLength: this.apiKey ? this.apiKey.length : 0
+        };
+    }
 }
 
 module.exports = OpenRouterClient; 
