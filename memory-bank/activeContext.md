@@ -1,26 +1,40 @@
-# Active Context: LAWSA Compiler
+# Active Context: LAWSA Cursor-Like IDE
 
 ## Current Work Focus
-- Completing and refining the preprocessor (multi-argument macros, macro hygiene, robust includes, full directive support).
-- Laying groundwork for standard library stubs and integration.
-- Planning for codegen optimizations and improved error/UX.
+- **TRANSFORMING PROJECT**: Converting LAWSA from educational compiler to Cursor-like IDE with memory and LLM integration
+- **LLM Integration**: Implementing Qwen Coder model from OpenRouter API for AI-powered development
+- **Memory System**: Building persistent memory system for context-aware AI assistance
+- **IDE Enhancement**: Expanding Electron app with advanced AI features
 
 ## Recent Changes
-- Type system expanded to all C primitives, structs/unions/enums, typedefs, bitfields, flexible arrays, pointer arithmetic, struct assignment, float/double.
-- Parser refactored for unified type/declarator handling.
-- Robust semantic analysis and error recovery implemented.
-- Minimal and advanced preprocessor features added (macros, includes, conditionals, function-like macros).
-- Comprehensive positive/negative test suite created and passing.
-- Build system and codebase refactored for consistency and maintainability.
+- Project scope shifted from pure educational compiler to AI-powered development environment
+- Identified need for memory system and LLM integration architecture
+- Planning integration of OpenRouter API with Qwen Coder model
+- Preparing to enhance existing Electron IDE with Cursor-like capabilities
 
 ## Next Steps
-1. Complete preprocessor (multi-arg macros, macro hygiene, robust includes, all directives).
-2. Add standard library stubs and integration.
-3. Implement codegen optimizations.
-4. Improve error reporting and user experience.
-5. Expand and maintain test suite for all new features and bugfixes.
+1. **Memory System Implementation**
+   - Design persistent memory storage for project context
+   - Implement memory retrieval and update mechanisms
+   - Create memory indexing for efficient context access
+
+2. **LLM Integration Architecture**
+   - Set up OpenRouter API integration
+   - Implement Qwen Coder model communication
+   - Create prompt engineering for compiler-aware assistance
+
+3. **IDE Enhancement**
+   - Extend existing Electron app with memory-aware features
+   - Add AI-powered code completion and suggestions
+   - Implement context-aware refactoring and optimization
+
+4. **Compiler-AI Integration**
+   - Connect LLM with compiler internals for better suggestions
+   - Add AI-powered error diagnosis and fixes
+   - Implement intelligent code generation assistance
 
 ## Active Decisions
-- Prioritize preprocessor completion before optimizations and standard library.
-- Maintain educational clarity and extensibility in all code changes.
-- Update Memory Bank and documentation after each major milestone. 
+- Use OpenRouter API with Qwen Coder model for LLM capabilities
+- Maintain existing compiler functionality while adding AI features
+- Build memory system that understands compiler context and project structure
+- Create seamless integration between AI assistance and compiler operations 

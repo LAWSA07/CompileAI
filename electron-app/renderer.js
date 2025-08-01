@@ -1,7 +1,12 @@
-// Renderer process for LAWSA C Compiler
+// Renderer process for LAWSA Cursor IDE
 
 // Access to Electron IPC
 const { ipcRenderer } = window.electronAPI;
+
+// Import services
+const MemoryService = require('./src/services/memoryService');
+const LLMService = require('./src/services/llmService');
+const AICompletionService = require('./src/services/aiCompletionService');
 
 // Default C code
 const defaultCode = `#include <stdio.h>
@@ -17,6 +22,11 @@ let originalCode = defaultCode;
 let currentFilePath = null;
 let diffEditor = null;
 
+// Services
+let memoryService = null;
+let llmService = null;
+let aiCompletionService = null;
+
 // DOM Elements
 const compileBtn = document.getElementById('compile-btn');
 const runBtn = document.getElementById('run-btn');
@@ -31,6 +41,44 @@ const statusMessage = document.getElementById('status-message');
 const cursorPosition = document.getElementById('cursor-position');
 const loadingIndicator = document.getElementById('loading-indicator');
 const toastNotification = document.getElementById('toast-notification');
+
+// Initialize services
+async function initializeServices() {
+  try {
+    showLoading('Initializing AI services...');
+    
+    // Initialize memory service
+    memoryService = new MemoryService(process.cwd());
+    const memoryResult = await memoryService.initialize();
+    
+    if (!memoryResult.success) {
+      console.error('Memory service initialization failed:', memoryResult.error);
+      showToast('Memory service failed to initialize', 'error');
+    }
+    
+    // Initialize LLM service
+    const apiKey = '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';
+    llmService = new LLMService(apiKey);
+    const llmResult = await llmService.initialize();
+    
+    if (!llmResult.success) {
+      console.error('LLM service initialization failed:', llmResult.error);
+      showToast('LLM service failed to initialize', 'error');
+    }
+    
+    // Initialize AI completion service
+    if (memoryService && llmService) {
+      aiCompletionService = new AICompletionService(memoryService, llmService);
+      showToast('AI services initialized successfully', 'success');
+    }
+    
+    hideLoading();
+  } catch (error) {
+    console.error('Service initialization error:', error);
+    hideLoading();
+    showToast('Service initialization failed', 'error');
+  }
+}
 
 // Initialize Monaco Editor
 require.config({ paths: { vs: './node_modules/monaco-editor/min/vs' } });
@@ -53,7 +101,13 @@ require(['vs/editor/editor.main'], function() {
     renderLineHighlight: 'all',
     lineNumbers: 'on',
     rulers: [],
-    wordWrap: 'off'
+    wordWrap: 'off',
+    suggestOnTriggerCharacters: true,
+    quickSuggestions: {
+      other: true,
+      comments: false,
+      strings: false
+    }
   });
   
   // Set up resizable panels
@@ -71,10 +125,42 @@ require(['vs/editor/editor.main'], function() {
   editor.onDidChangeCursorPosition(e => {
     const position = e.position;
     cursorPosition.textContent = `Line: ${position.lineNumber}, Column: ${position.column}`;
+    
+    // Update context in memory
+    if (memoryService) {
+      memoryService.updateContext({
+        cursorPosition: { line: position.lineNumber, column: position.column }
+      });
+    }
   });
+  
+  // Track content changes
+  editor.onDidChangeModelContent(e => {
+    const content = editor.getValue();
+    
+    // Update file in memory
+    if (memoryService && currentFilePath) {
+      memoryService.updateFile(currentFilePath, content);
+    }
+    
+    // Update context
+    if (memoryService) {
+      memoryService.updateContext({
+        selectedCode: getSelectedText()
+      });
+    }
+  });
+  
+  // Register AI completion provider
+  if (aiCompletionService) {
+    aiCompletionService.registerCompletionProvider(monaco);
+  }
   
   // Mark the editor as initialized
   statusMessage.textContent = 'Editor Ready';
+  
+  // Initialize services after editor is ready
+  initializeServices();
 });
 
 // Tab switching in panels
@@ -98,25 +184,47 @@ compileBtn.addEventListener('click', async () => {
   showLoading('Compiling...');
   
   try {
-    const result = await ipcRenderer.invoke('compile-c', code);
+    // Update memory with current code
+    if (memoryService && currentFilePath) {
+      await memoryService.updateFile(currentFilePath, code);
+    }
+    
+    // Compile using the LAWSA compiler
+    const result = await ipcRenderer.invoke('compile-code', code);
     
     if (result.success) {
+      updateConsole(result.output);
+      updateAssembly(result.assembly);
       showToast('Compilation successful', 'success');
-      updateConsole(`Compilation successful\n${result.stdout}`);
       
-      // Check if result contains assembly code, show in assembly panel
-      if (result.assembly) {
-        assemblyPanel.textContent = result.assembly;
-        // Show assembly tab
-        document.querySelector('.panel-tab[data-panel="assembly"]').click();
+      // Add to memory history
+      if (memoryService) {
+        memoryService.addToHistory({
+          type: 'compilation',
+          success: true,
+          output: result.output
+        });
       }
     } else {
+      updateConsole(result.error);
       showToast('Compilation failed', 'error');
-      updateConsole(`Compilation failed\n${result.stderr}`);
+      
+      // Try AI error diagnosis
+      if (llmService && memoryService) {
+        const context = await memoryService.getAIContext();
+        const diagnosis = await llmService.diagnoseError(context, result.error, code);
+        
+        if (diagnosis.success) {
+          updateConsole(`AI Diagnosis: ${diagnosis.diagnosis}`);
+          if (diagnosis.suggestedFix) {
+            updateConsole(`Suggested Fix:\n${diagnosis.suggestedFix}`);
+          }
+        }
+      }
     }
   } catch (error) {
-    showToast('Error during compilation', 'error');
     updateConsole(`Error: ${error.message}`);
+    showToast('Compilation error', 'error');
   } finally {
     hideLoading();
   }
@@ -128,18 +236,18 @@ runBtn.addEventListener('click', async () => {
   showLoading('Running...');
   
   try {
-    const result = await ipcRenderer.invoke('run-c', code);
+    const result = await ipcRenderer.invoke('run-code', code);
     
     if (result.success) {
+      updateConsole(`Program output:\n${result.output}`);
       showToast('Program executed successfully', 'success');
-      updateConsole(`Program output:\n${result.output}\n\nProcess details:\n${result.process}`);
     } else {
-      showToast('Execution failed', 'error');
-      updateConsole(`Execution failed\n${result.process}\n${result.error || ''}`);
+      updateConsole(`Runtime error: ${result.error}`);
+      showToast('Runtime error', 'error');
     }
   } catch (error) {
-    showToast('Error during execution', 'error');
     updateConsole(`Error: ${error.message}`);
+    showToast('Execution error', 'error');
   } finally {
     hideLoading();
   }
@@ -148,72 +256,61 @@ runBtn.addEventListener('click', async () => {
 // Refactor button handler
 refactorBtn.addEventListener('click', async () => {
   const code = editor.getValue();
-  originalCode = code;
+  const selectedText = getSelectedText();
+  const textToRefactor = selectedText || code;
   
-  showLoading('Refactoring code with AI...');
+  if (!textToRefactor.trim()) {
+    showToast('No code to refactor', 'warning');
+    return;
+  }
+  
+  showLoading('AI Refactoring...');
   
   try {
-    const refactoredCode = await ipcRenderer.invoke('send-code-to-llm', code);
+    let refactoredCode;
     
-    // Log the received code for debugging
-    console.log("Original code:", originalCode);
-    console.log("Refactored code:", refactoredCode);
-    
-    // Set up the diff editor in the diff panel
-    diffPanel.innerHTML = '';
-    const diffContainer = document.createElement('div');
-    diffContainer.style.width = '100%';
-    diffContainer.style.height = 'calc(100% - 50px)'; // Leave room for the button
-    diffPanel.appendChild(diffContainer);
-    
-    // Show the diff panel first so monaco can calculate sizes correctly
-    document.querySelector('.panel-tab[data-panel="diff"]').click();
-    
-    // Create diff editor with modified settings
-    diffEditor = monaco.editor.createDiffEditor(diffContainer, {
-      originalEditable: false,
-      readOnly: false,
-      renderSideBySide: true,
-      theme: 'vs-dark',
-      automaticLayout: true,
-      fontSize: 14
-    });
-    
-    // Wait a bit for the DOM to update before setting models
-    setTimeout(() => {
-      const originalModel = monaco.editor.createModel(originalCode, 'c');
-      const modifiedModel = monaco.editor.createModel(refactoredCode, 'c');
+    if (llmService && memoryService) {
+      // Use AI refactoring
+      const context = await memoryService.getAIContext();
+      const result = await llmService.generateCodeRefactoring(context, textToRefactor);
       
-      diffEditor.setModel({
-        original: originalModel,
-        modified: modifiedModel
-      });
-      
-      // Force a layout update
-      diffEditor.layout();
-      
-      // Also display a text summary of changes in console
-      updateConsole(`Refactoring completed.\n\nOriginal size: ${originalCode.length} bytes\nRefactored size: ${refactoredCode.length} bytes`);
-    }, 100);
+      if (result.success) {
+        refactoredCode = result.refactoredCode;
+        
+        // Add AI interaction to memory
+        await memoryService.addAIInteraction({
+          type: 'refactoring',
+          originalCode: textToRefactor,
+          refactoredCode: refactoredCode,
+          explanation: result.explanation
+        });
+      } else {
+        throw new Error(result.error);
+      }
+    } else {
+      // Fallback to local refactoring
+      const localRefactor = require('./src/services/localRefactorService');
+      refactoredCode = await localRefactor.refactorCCode(textToRefactor);
+    }
     
-    // Create apply button
-    const applyBtn = document.createElement('button');
-    applyBtn.textContent = 'Apply Refactoring';
-    applyBtn.className = 'toolbar-button';
-    applyBtn.style.margin = '10px';
-    applyBtn.addEventListener('click', () => {
+    if (selectedText) {
+      // Replace selected text
+      const selection = editor.getSelection();
+      editor.executeEdits('refactor', [{
+        range: selection,
+        text: refactoredCode
+      }]);
+    } else {
+      // Replace entire content
       editor.setValue(refactoredCode);
-      document.querySelector('.panel-tab[data-panel="console"]').click();
-      diffPanel.removeChild(applyBtn);
-      showToast('Refactoring applied', 'success');
-    });
+    }
     
-    diffPanel.appendChild(applyBtn);
+    showDiff(selectedText || code, refactoredCode);
+    showToast('Code refactored successfully', 'success');
     
-    showToast('Refactoring suggestion ready', 'success');
   } catch (error) {
-    showToast('Error during refactoring', 'error');
-    updateConsole(`Error: ${error.message}`);
+    updateConsole(`Refactoring error: ${error.message}`);
+    showToast('Refactoring failed', 'error');
   } finally {
     hideLoading();
   }
@@ -225,82 +322,150 @@ openBtn.addEventListener('click', async () => {
     const result = await ipcRenderer.invoke('open-file');
     
     if (result.success) {
-      editor.setValue(result.content);
       currentFilePath = result.filePath;
-      currentFileLabel.textContent = result.filePath.split(/[/\\]/).pop(); // Show just the filename
-      showToast('File opened', 'success');
+      editor.setValue(result.content);
+      currentFileLabel.textContent = result.fileName;
+      
+      // Update memory
+      if (memoryService) {
+        await memoryService.updateFile(currentFilePath, result.content);
+        await memoryService.updateContext({
+          currentFile: currentFilePath
+        });
+      }
+      
+      showToast('File opened successfully', 'success');
     }
   } catch (error) {
-    showToast('Error opening file', 'error');
-    updateConsole(`Error: ${error.message}`);
+    showToast('Failed to open file', 'error');
   }
 });
 
 // Save button handler
 saveBtn.addEventListener('click', async () => {
+  const content = editor.getValue();
+  
   try {
-    const content = editor.getValue();
-    const result = await ipcRenderer.invoke('save-file', { content, filePath: currentFilePath });
+    const result = await ipcRenderer.invoke('save-file', {
+      filePath: currentFilePath,
+      content: content
+    });
     
     if (result.success) {
       currentFilePath = result.filePath;
-      currentFileLabel.textContent = result.filePath.split(/[/\\]/).pop(); // Show just the filename
-      showToast('File saved', 'success');
+      currentFileLabel.textContent = result.fileName;
+      
+      // Update memory
+      if (memoryService) {
+        await memoryService.updateFile(currentFilePath, content);
+      }
+      
+      showToast('File saved successfully', 'success');
     }
   } catch (error) {
-    showToast('Error saving file', 'error');
-    updateConsole(`Error: ${error.message}`);
+    showToast('Failed to save file', 'error');
   }
 });
 
-// Helper function to update console
-function updateConsole(text) {
-  consolePanel.textContent = text;
-  
-  // If console panel is not active, highlight its tab
-  if (!document.getElementById('console-panel').classList.contains('active')) {
-    const consoleTab = document.querySelector('.panel-tab[data-panel="console"]');
-    consoleTab.style.fontWeight = 'bold';
-    consoleTab.style.color = '#3c9bf9';
-    
-    // Reset when clicked
-    consoleTab.addEventListener('click', function resetTab() {
-      consoleTab.style.fontWeight = 'normal';
-      consoleTab.style.color = '';
-      consoleTab.removeEventListener('click', resetTab);
-    }, { once: true });
+// Utility functions
+function getSelectedText() {
+  const selection = editor.getSelection();
+  if (selection.isEmpty()) {
+    return '';
   }
+  return editor.getValueInRange(selection);
 }
 
-// Helper function to show loading indicator
+function updateConsole(text) {
+  consolePanel.innerHTML = `<pre>${text}</pre>`;
+  
+  // Switch to console tab
+  document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('.panel-tab[data-panel="console"]').classList.add('active');
+  
+  document.querySelectorAll('.panel-content').forEach(p => p.classList.remove('active'));
+  consolePanel.classList.add('active');
+}
+
+function updateAssembly(assembly) {
+  assemblyPanel.innerHTML = `<pre>${assembly}</pre>`;
+}
+
+function showDiff(original, modified) {
+  const diff = require('diff-match-patch');
+  const dmp = new diff();
+  const diffs = dmp.diff_main(original, modified);
+  dmp.diff_cleanupSemantic(diffs);
+  
+  let diffHtml = '';
+  diffs.forEach(([type, text]) => {
+    switch (type) {
+      case 1: // Insert
+        diffHtml += `<span style="background-color: #4caf50; color: white;">${text}</span>`;
+        break;
+      case -1: // Delete
+        diffHtml += `<span style="background-color: #f44336; color: white;">${text}</span>`;
+        break;
+      default: // Equal
+        diffHtml += text;
+    }
+  });
+  
+  diffPanel.innerHTML = `<pre>${diffHtml}</pre>`;
+  
+  // Switch to diff tab
+  document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('.panel-tab[data-panel="diff"]').classList.add('active');
+  
+  document.querySelectorAll('.panel-content').forEach(p => p.classList.remove('active'));
+  diffPanel.classList.add('active');
+}
+
 function showLoading(message = 'Processing...') {
   loadingIndicator.textContent = message;
   loadingIndicator.style.display = 'block';
-  statusMessage.textContent = message;
 }
 
-// Helper function to hide loading indicator
 function hideLoading() {
   loadingIndicator.style.display = 'none';
-  statusMessage.textContent = 'Ready';
 }
 
-// Helper function to show toast notifications
 function showToast(message, type = 'info') {
-  toastNotification.textContent = message;
-  toastNotification.className = 'toast';
-  
-  if (type === 'success') {
-    toastNotification.style.backgroundColor = '#4caf50';
-  } else if (type === 'error') {
-    toastNotification.style.backgroundColor = '#f44336';
-  } else {
-    toastNotification.style.backgroundColor = '#3c9bf9';
-  }
-  
-  toastNotification.classList.add('show');
+  const toast = document.getElementById('toast-notification');
+  toast.textContent = message;
+  toast.className = `toast ${type}`;
+  toast.classList.add('show');
   
   setTimeout(() => {
-    toastNotification.classList.remove('show');
+    toast.classList.remove('show');
   }, 3000);
-} 
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey) {
+    switch (e.key) {
+      case 's':
+        e.preventDefault();
+        saveBtn.click();
+        break;
+      case 'o':
+        e.preventDefault();
+        openBtn.click();
+        break;
+      case 'Enter':
+        e.preventDefault();
+        compileBtn.click();
+        break;
+    }
+  }
+});
+
+// Initialize AI suggestions on editor focus
+editor?.onDidFocusEditorWidget(() => {
+  if (aiCompletionService) {
+    // Trigger AI suggestions
+    const position = editor.getPosition();
+    aiCompletionService.generateCompletions(editor.getModel(), position);
+  }
+}); 

@@ -51,7 +51,7 @@ static bool is_struct_or_union(Type *ty)
 
 // Generate code for accessing a variable at an offset from RBP.
 void gen_addr(Node *node)
-{
+{  
     if (node->kind == ND_LVAR)
     {
         int offset = node->offset;

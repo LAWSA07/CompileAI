@@ -1,21 +1,60 @@
 {
-  "name": "electron-app",
+  "name": "lawsa-cursor-ide",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "electron ."
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "keywords": [
+    "cursor",
+    "ide",
+    "compiler",
+    "ai",
+    "c",
+    "lawsa"
+  ],
+  "author": "LAWSA Team",
+  "license": "MIT",
+  "description": "LAWSA Cursor-like IDE with AI-powered development assistance",
   "dependencies": {
-    "axios": "^0.27.2",
+    "axios": "^1.6.0",
     "codemirror": "^5.65.16",
     "diff-match-patch": "^1.0.5",
     "electron": "^36.2.1",
     "monaco-editor": "^0.52.2",
-    "split.js": "^1.6.5"
+    "split.js": "^1.6.5",
+    "sqlite3": "^5.1.6",
+    "node-cache": "^5.1.2",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "electron-builder": "^24.6.4"
+  },
+  "build": {
+    "appId": "com.lawsa.cursor-ide",
+    "productName": "LAWSA Cursor IDE",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/**/*",
+      "!dist/**/*",
+      "!build/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
   }
 }

@@ -1,0 +1,3 @@
+Name: John
+Age: 19
+Grade: 88.50
